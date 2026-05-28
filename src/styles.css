@@ -1,0 +1,217 @@
+.cae-toolbar {
+  position: absolute;
+  z-index: 10;
+  font-family: Arial, Helvetica, sans-serif;
+  pointer-events: auto;
+}
+
+.cae-toolbar--top-left {
+  top: 12px;
+  left: 12px;
+}
+
+.cae-toolbar--top-right {
+  top: 12px;
+  right: 12px;
+}
+
+.cae-toolbar--bottom-left {
+  bottom: 12px;
+  left: 12px;
+}
+
+.cae-toolbar--bottom-right {
+  right: 12px;
+  bottom: 12px;
+}
+
+.cae-toolbar__main {
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
+}
+
+.cae-toolbar__button-container {
+  position: relative;
+}
+
+.cae-toolbar__button {
+  position: relative;
+  z-index: 3;
+  display: block;
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+  box-sizing: border-box;
+  color: #000;
+  font: inherit;
+  letter-spacing: 0;
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid #ccc;
+  border-radius: 0;
+  cursor: pointer;
+  appearance: none;
+}
+
+.cae-toolbar__button-container:first-child .cae-toolbar__button {
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+}
+
+.cae-toolbar__button-container:last-child .cae-toolbar__button {
+  border-bottom: 0;
+  border-bottom-right-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+
+.cae-toolbar__button:hover {
+  background-color: #f4f4f4;
+}
+
+.cae-toolbar__button:focus-visible {
+  outline: 2px solid #4d90fe;
+  outline-offset: 2px;
+}
+
+.cae-toolbar__button-container.is-active > .cae-toolbar__button {
+  box-shadow: inset 0 -1px 5px 2px rgba(81, 77, 77, 0.31);
+}
+
+.cae-toolbar__icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: contain;
+}
+
+.cae-toolbar__icon--marker {
+  background-image: url('./assets/icons/Marker.svg?no-inline');
+}
+
+.cae-toolbar__icon--polyline {
+  background-image: url('./assets/icons/Line.svg?no-inline');
+}
+
+.cae-toolbar__icon--polygon {
+  background-image: url('./assets/icons/Polygon.svg?no-inline');
+}
+
+.cae-toolbar__icon--circle {
+  background-image: url('./assets/icons/Circle.svg?no-inline');
+}
+
+.cae-toolbar__icon--edit {
+  background-image: url('./assets/icons/Edit_Vertex.svg?no-inline');
+}
+
+.cae-toolbar__icon--drag {
+  background-image: url('./assets/icons/Move.svg?no-inline');
+}
+
+.cae-toolbar__button:disabled {
+  background-color: #f4f4f4;
+  cursor: not-allowed;
+}
+
+.cae-toolbar__button:disabled > .cae-toolbar__icon {
+  filter: opacity(0.6);
+}
+
+.cae-toolbar__actions-container {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  z-index: 2;
+  display: block;
+  white-space: nowrap;
+  direction: ltr;
+}
+
+.cae-toolbar--top-right .cae-toolbar__actions-container,
+.cae-toolbar--bottom-right .cae-toolbar__actions-container {
+  right: 100%;
+  left: auto;
+}
+
+.cae-toolbar__actions-container[hidden] {
+  display: none;
+}
+
+.cae-toolbar__action {
+  display: inline-block;
+  width: auto;
+  height: 29px;
+  padding: 0 10px;
+  color: #fff;
+  font: inherit;
+  line-height: 29px;
+  vertical-align: middle;
+  white-space: nowrap;
+  background-color: #666;
+  border: 0;
+  border-right: 1px solid #eee;
+  border-bottom: 0;
+  border-radius: 0;
+  cursor: pointer;
+  user-select: none;
+  appearance: none;
+}
+
+.cae-toolbar__action:last-child {
+  border-right: 0;
+  border-radius: 0 3px 3px 0;
+}
+
+.cae-toolbar--top-right .cae-toolbar__action:first-child,
+.cae-toolbar--bottom-right .cae-toolbar__action:first-child {
+  border-radius: 3px 0 0 3px;
+}
+
+.cae-toolbar--top-right .cae-toolbar__action:last-child,
+.cae-toolbar--bottom-right .cae-toolbar__action:last-child {
+  border-radius: 0;
+}
+
+.cae-toolbar__button-container.is-active:first-child .cae-toolbar__button {
+  border-top-right-radius: 0;
+}
+
+.cae-toolbar--top-right .cae-toolbar__button-container.is-active:first-child .cae-toolbar__button,
+.cae-toolbar--bottom-right .cae-toolbar__button-container.is-active:first-child .cae-toolbar__button {
+  border-top-right-radius: 2px;
+  border-top-left-radius: 0;
+}
+
+.cae-toolbar__action:hover,
+.cae-toolbar__action:focus {
+  background-color: #777;
+}
+
+.cae-toolbar__action:focus-visible {
+  outline: 2px solid #4d90fe;
+  outline-offset: 2px;
+}
+
+.cae-toolbar__action:disabled {
+  cursor: not-allowed;
+  filter: opacity(0.6);
+}
+
+.cae-draw-cursor,
+.cae-draw-cursor .cesium-widget,
+.cae-draw-cursor .cesium-widget canvas {
+  cursor: crosshair !important;
+}
+
+.cae-draw-cursor.cae-pointer-cursor,
+.cae-draw-cursor.cae-pointer-cursor .cesium-widget,
+.cae-draw-cursor.cae-pointer-cursor .cesium-widget canvas {
+  cursor: pointer !important;
+}
+
+.cae-edit-cursor {
+  cursor: default;
+}

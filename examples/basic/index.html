@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cesium Annotation Editor Basic Demo</title>
+  </head>
+  <body>
+    <div id="cesiumContainer"></div>
+    <aside class="demo-panel">
+      <h1>Cesium Annotation Editor</h1>
+      <p id="mode">mode: idle</p>
+      <p id="count">annotations: 0</p>
+      <div class="demo-panel__buttons">
+        <button id="export" type="button">Export JSON</button>
+        <button id="clear" type="button">Clear</button>
+      </div>
+      <pre id="output"></pre>
+    </aside>
+    <script>
+      var CESIUM_BASE_URL = '/cesium/';
+    </script>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
