@@ -1,5 +1,6 @@
 import type { Annotation, AnnotationInput, AnnotationJSON } from '../types';
 import { cartesianToLngLatHeight, lngLatHeightToCartesian } from '../utils/coordinates';
+import { cloneProperties } from '../utils/properties';
 
 export function toJSON(annotations: Annotation[]): AnnotationJSON[] {
   return annotations.map((annotation) => {
@@ -9,21 +10,21 @@ export function toJSON(annotations: Annotation[]): AnnotationJSON[] {
           id: annotation.id,
           type: 'point',
           position: cartesianToLngLatHeight(annotation.position),
-          properties: annotation.properties
+          properties: cloneProperties(annotation.properties)
         };
       case 'polyline':
         return {
           id: annotation.id,
           type: 'polyline',
           positions: annotation.positions.map(cartesianToLngLatHeight),
-          properties: annotation.properties
+          properties: cloneProperties(annotation.properties)
         };
       case 'polygon':
         return {
           id: annotation.id,
           type: 'polygon',
           positions: annotation.positions.map(cartesianToLngLatHeight),
-          properties: annotation.properties
+          properties: cloneProperties(annotation.properties)
         };
       case 'circle':
         return {
@@ -31,7 +32,7 @@ export function toJSON(annotations: Annotation[]): AnnotationJSON[] {
           type: 'circle',
           center: cartesianToLngLatHeight(annotation.center),
           radius: annotation.radius,
-          properties: annotation.properties
+          properties: cloneProperties(annotation.properties)
         };
     }
   });
@@ -44,21 +45,21 @@ export function fromJSONInput(item: AnnotationJSON): AnnotationInput {
         id: item.id,
         type: 'point',
         position: lngLatHeightToCartesian(item.position),
-        properties: item.properties
+        properties: cloneProperties(item.properties)
       };
     case 'polyline':
       return {
         id: item.id,
         type: 'polyline',
         positions: item.positions.map(lngLatHeightToCartesian),
-        properties: item.properties
+        properties: cloneProperties(item.properties)
       };
     case 'polygon':
       return {
         id: item.id,
         type: 'polygon',
         positions: item.positions.map(lngLatHeightToCartesian),
-        properties: item.properties
+        properties: cloneProperties(item.properties)
       };
     case 'circle':
       return {
@@ -66,7 +67,7 @@ export function fromJSONInput(item: AnnotationJSON): AnnotationInput {
         type: 'circle',
         center: lngLatHeightToCartesian(item.center),
         radius: item.radius,
-        properties: item.properties
+        properties: cloneProperties(item.properties)
       };
   }
 }

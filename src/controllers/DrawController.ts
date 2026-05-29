@@ -15,6 +15,16 @@ import type { SnapResolution } from '../core/SnapService';
 import type { SnapService } from '../core/SnapService';
 import { annotationTypeToGeomanShape } from '../geoman';
 import { MutablePositionSource, MutablePositionsSource, MutableScalarSource } from '../core/GeometryPreviewSession';
+import {
+  addDomEventListener,
+  addWindowEventListener,
+  cancelFrame,
+  clearBrowserTimeout,
+  requestFrame,
+  setBrowserTimeout,
+  type AnimationFrameHandle,
+  type TimeoutHandle
+} from '../utils/browser';
 import { clampRadius, pointAlongSurface } from '../utils/circle';
 import { cloneCartesian, surfaceDistance } from '../utils/coordinates';
 
@@ -41,15 +51,17 @@ interface WorkingState {
 export class DrawController {
   private handler: ScreenSpaceEventHandler | null = null;
   private keydown: ((event: KeyboardEvent) => void) | null = null;
+  private removeKeydownListener: (() => void) | null = null;
   private state: WorkingState | null = null;
   private activeType: AnnotationType | null = null;
   private hoveredVertexHelper: Entity | null = null;
   private viewerDoubleClickAction: ScreenSpaceAction | undefined;
   private viewerDoubleClickSuppressed = false;
   private doubleClickBlocker: ((event: MouseEvent) => void) | null = null;
-  private doubleClickBlockerReleaseTimer: number | null = null;
+  private removeDoubleClickBlockerListener: (() => void) | null = null;
+  private doubleClickBlockerReleaseTimer: TimeoutHandle | null = null;
   private pendingMouseMoveScreenPosition: Cartesian2 | null = null;
-  private mouseMoveFrame: number | null = null;
+  private mouseMoveFrame: AnimationFrameHandle | null = null;
   private activeSnapEvent: GeomanSnapEvent | null = null;
   private activeSnapKey: string | null = null;
 
@@ -96,7 +108,7 @@ export class DrawController {
         this.removeLastVertex();
       }
     };
-    window.addEventListener('keydown', this.keydown);
+    this.removeKeydownListener = addWindowEventListener('keydown', this.keydown);
     this.events.emit('drawstart', { mode: this.mode(), type });
   }
 
@@ -109,10 +121,9 @@ export class DrawController {
     this.viewer.scene.canvas.classList.remove('cae-draw-cursor');
     this.clearLineLikeHover();
     this.clearSnapState();
-    if (this.keydown) {
-      window.removeEventListener('keydown', this.keydown);
-      this.keydown = null;
-    }
+    this.removeKeydownListener?.();
+    this.removeKeydownListener = null;
+    this.keydown = null;
     this.entityFactory.removeWorkingEntities();
     this.restoreViewerDoubleClick();
     this.releaseDoubleClickBlocker(reason === 'destroy');
@@ -571,7 +582,7 @@ export class DrawController {
       return;
     }
 
-    this.mouseMoveFrame = window.requestAnimationFrame(() => {
+    this.mouseMoveFrame = requestFrame(() => {
       this.mouseMoveFrame = null;
       const latestScreenPosition = this.pendingMouseMoveScreenPosition;
       this.pendingMouseMoveScreenPosition = null;
@@ -625,7 +636,7 @@ export class DrawController {
   private cancelMouseMoveFrame(): void {
     this.pendingMouseMoveScreenPosition = null;
     if (this.mouseMoveFrame !== null) {
-      window.cancelAnimationFrame(this.mouseMoveFrame);
+      cancelFrame(this.mouseMoveFrame);
       this.mouseMoveFrame = null;
     }
   }
@@ -695,7 +706,9 @@ export class DrawController {
         this.removeDoubleClickBlocker();
       }
     };
-    this.viewer.scene.canvas.addEventListener('dblclick', this.doubleClickBlocker, { capture: true });
+    this.removeDoubleClickBlockerListener = addDomEventListener(this.viewer.scene.canvas, 'dblclick', this.doubleClickBlocker as EventListener, {
+      capture: true
+    });
   }
 
   private releaseDoubleClickBlocker(immediate: boolean): void {
@@ -709,7 +722,7 @@ export class DrawController {
       return;
     }
 
-    this.doubleClickBlockerReleaseTimer = window.setTimeout(() => {
+    this.doubleClickBlockerReleaseTimer = setBrowserTimeout(() => {
       this.doubleClickBlockerReleaseTimer = null;
       if (!this.state) {
         this.removeDoubleClickBlocker();
@@ -721,7 +734,7 @@ export class DrawController {
     if (this.doubleClickBlockerReleaseTimer === null) {
       return;
     }
-    window.clearTimeout(this.doubleClickBlockerReleaseTimer);
+    clearBrowserTimeout(this.doubleClickBlockerReleaseTimer);
     this.doubleClickBlockerReleaseTimer = null;
   }
 
@@ -730,7 +743,8 @@ export class DrawController {
     if (!this.doubleClickBlocker) {
       return;
     }
-    this.viewer.scene.canvas.removeEventListener('dblclick', this.doubleClickBlocker, true);
+    this.removeDoubleClickBlockerListener?.();
+    this.removeDoubleClickBlockerListener = null;
     this.doubleClickBlocker = null;
   }
 

@@ -1,5 +1,15 @@
-import { Cartesian2, Cartesian3, Cartographic, Math as CesiumMath, SceneTransforms, type Entity, type Viewer } from 'cesium';
+import {
+  Cartesian2,
+  Cartesian3,
+  Cartographic,
+  Ellipsoid,
+  Math as CesiumMath,
+  SceneTransforms,
+  type Entity,
+  type Viewer
+} from 'cesium';
 import type { Annotation, GeomanEntity, NormalizedOptions } from '../types';
+import { addWindowEventListener } from '../utils/browser';
 import { cloneCartesian } from '../utils/coordinates';
 import type { AnnotationStore } from './AnnotationStore';
 import type { EntityFactory } from './EntityFactory';
@@ -46,10 +56,28 @@ interface SegmentCandidate {
 
 type Candidate = VertexCandidate | SegmentCandidate;
 
+interface CandidateCache {
+  signature: string;
+  candidates: Candidate[];
+}
+
+interface ProjectionCache {
+  signature: string;
+  screens: Map<string, Cartesian2 | null>;
+}
+
 export class SnapService {
   private altKeyPressed = false;
-  private readonly keydown?: (event: KeyboardEvent) => void;
-  private readonly keyup?: (event: KeyboardEvent) => void;
+  private readonly removeKeydownListener: () => void;
+  private readonly removeKeyupListener: () => void;
+  private candidateCache: CandidateCache = {
+    signature: '',
+    candidates: []
+  };
+  private projectionCache: ProjectionCache = {
+    signature: '',
+    screens: new Map()
+  };
 
   constructor(
     private readonly viewer: Viewer,
@@ -57,21 +85,17 @@ export class SnapService {
     private readonly store: AnnotationStore,
     private readonly entityFactory: EntityFactory
   ) {
-    if (typeof window !== 'undefined') {
-      this.keydown = (event: KeyboardEvent) => {
-        if (event.key === 'Alt') {
-          this.altKeyPressed = true;
-          this.clear();
-        }
-      };
-      this.keyup = (event: KeyboardEvent) => {
-        if (event.key === 'Alt') {
-          this.altKeyPressed = false;
-        }
-      };
-      window.addEventListener('keydown', this.keydown);
-      window.addEventListener('keyup', this.keyup);
-    }
+    this.removeKeydownListener = addWindowEventListener('keydown', (event) => {
+      if (event.key === 'Alt') {
+        this.altKeyPressed = true;
+        this.clear();
+      }
+    });
+    this.removeKeyupListener = addWindowEventListener('keyup', (event) => {
+      if (event.key === 'Alt') {
+        this.altKeyPressed = false;
+      }
+    });
   }
 
   resolve(screenPosition: Cartesian2, fallbackPosition?: Cartesian3, context: SnapContext = {}): SnapResolution {
@@ -100,14 +124,8 @@ export class SnapService {
   }
 
   destroy(): void {
-    if (typeof window !== 'undefined') {
-      if (this.keydown) {
-        window.removeEventListener('keydown', this.keydown);
-      }
-      if (this.keyup) {
-        window.removeEventListener('keyup', this.keyup);
-      }
-    }
+    this.removeKeydownListener();
+    this.removeKeyupListener();
     this.clear();
   }
 
@@ -146,12 +164,42 @@ export class SnapService {
       yield* this.workingCandidates(context.workingPositions);
     }
 
-    for (const annotation of this.store.getAll()) {
-      if (annotation.id === context.annotationId || annotation.properties?.snapIgnore === true) {
+    for (const candidate of this.annotationCandidateCache()) {
+      if (candidate.annotation?.id === context.annotationId) {
         continue;
       }
-      yield* this.annotationCandidates(annotation);
+      yield candidate;
     }
+  }
+
+  private annotationCandidateCache(): Candidate[] {
+    const annotations = this.store.getAll();
+    const signature = this.annotationCandidateSignature(annotations);
+    if (signature === this.candidateCache.signature) {
+      return this.candidateCache.candidates;
+    }
+
+    const candidates: Candidate[] = [];
+    for (const annotation of annotations) {
+      if (annotation.properties?.snapIgnore === true || !isAnnotationExplicitlyVisible(annotation)) {
+        continue;
+      }
+      candidates.push(...this.annotationCandidates(annotation));
+    }
+
+    this.candidateCache = { signature, candidates };
+    this.projectionCache = { signature: '', screens: new Map() };
+    return candidates;
+  }
+
+  private annotationCandidateSignature(annotations: Annotation[]): string {
+    const snapOptions = `${this.options.snapping.snapVertex}:${this.options.snapping.snapSegment}`;
+    const parts = annotations.map((annotation) => {
+      const show = isAnnotationExplicitlyVisible(annotation);
+      const ignored = annotation.properties?.snapIgnore === true;
+      return `${annotation.id}:${annotation.type}:${annotation.updatedAt}:${show}:${ignored}:${annotationVertexCount(annotation)}`;
+    });
+    return `${snapOptions}|${parts.join('|')}`;
   }
 
   private *workingCandidates(positions: Cartesian3[]): Iterable<Candidate> {
@@ -212,7 +260,7 @@ export class SnapService {
 
   private evaluateCandidate(candidate: Candidate, screenPosition: Cartesian2): SnapTarget | undefined {
     if (candidate.type === 'vertex') {
-      const candidateScreen = this.worldToScreen(candidate.position);
+      const candidateScreen = this.worldToScreen(candidate.position, candidate.key);
       if (!candidateScreen) {
         return undefined;
       }
@@ -228,8 +276,8 @@ export class SnapService {
       };
     }
 
-    const fromScreen = this.worldToScreen(candidate.from);
-    const toScreen = this.worldToScreen(candidate.to);
+    const fromScreen = this.worldToScreen(candidate.from, `${candidate.key}:from`);
+    const toScreen = this.worldToScreen(candidate.to, `${candidate.key}:to`);
     if (!fromScreen || !toScreen) {
       return undefined;
     }
@@ -248,10 +296,109 @@ export class SnapService {
     };
   }
 
-  private worldToScreen(position: Cartesian3): Cartesian2 | undefined {
+  private worldToScreen(position: Cartesian3, cacheKey: string): Cartesian2 | undefined {
+    if (!this.isWorldPositionVisible(position)) {
+      return undefined;
+    }
+
+    this.refreshProjectionCache();
+    if (this.projectionCache.screens.has(cacheKey)) {
+      const cached = this.projectionCache.screens.get(cacheKey);
+      return cached ? Cartesian2.clone(cached) : undefined;
+    }
+
     const screen = SceneTransforms.worldToWindowCoordinates(this.viewer.scene, position, new Cartesian2());
-    return screen ? Cartesian2.clone(screen) : undefined;
+    if (!screen || !this.isScreenPositionInViewport(screen)) {
+      this.projectionCache.screens.set(cacheKey, null);
+      return undefined;
+    }
+
+    const cloned = Cartesian2.clone(screen);
+    this.projectionCache.screens.set(cacheKey, cloned);
+    return Cartesian2.clone(cloned);
   }
+
+  private refreshProjectionCache(): void {
+    const signature = `${this.candidateCache.signature}|${this.cameraSignature()}|${this.viewportSignature()}|${this.options.snapping.snapDistance}`;
+    if (signature !== this.projectionCache.signature) {
+      this.projectionCache = {
+        signature,
+        screens: new Map()
+      };
+    }
+  }
+
+  private isWorldPositionVisible(position: Cartesian3): boolean {
+    const camera = this.viewer.scene.camera;
+    const cameraPosition = camera?.positionWC ?? camera?.position;
+    const cameraDirection = camera?.directionWC ?? camera?.direction;
+    if (cameraPosition && cameraDirection) {
+      const toPosition = Cartesian3.subtract(position, cameraPosition, new Cartesian3());
+      if (Cartesian3.dot(cameraDirection, toPosition) <= 0) {
+        return false;
+      }
+    }
+
+    if (cameraPosition && !this.isPositionAboveGlobeHorizon(position, cameraPosition)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private isPositionAboveGlobeHorizon(position: Cartesian3, cameraPosition: Cartesian3): boolean {
+    const ellipsoid = this.viewer.scene.globe?.ellipsoid ?? Ellipsoid.WGS84;
+    const radius = ellipsoid.maximumRadius;
+    const cameraDistance = Cartesian3.magnitude(cameraPosition);
+    const positionDistance = Cartesian3.magnitude(position);
+    if (cameraDistance <= radius || positionDistance === 0) {
+      return true;
+    }
+
+    const cosine = Cartesian3.dot(cameraPosition, position) / (cameraDistance * positionDistance);
+    const horizonCosine = radius / cameraDistance;
+    return cosine >= horizonCosine - 1e-6;
+  }
+
+  private isScreenPositionInViewport(screen: Cartesian2): boolean {
+    const viewport = this.viewport();
+    if (!viewport) {
+      return true;
+    }
+
+    const margin = this.options.snapping.snapDistance;
+    return screen.x >= -margin && screen.y >= -margin && screen.x <= viewport.width + margin && screen.y <= viewport.height + margin;
+  }
+
+  private cameraSignature(): string {
+    const camera = this.viewer.scene.camera;
+    const position = camera?.positionWC ?? camera?.position;
+    const direction = camera?.directionWC ?? camera?.direction;
+    return `${cartesianSignature(position)}:${cartesianSignature(direction)}`;
+  }
+
+  private viewportSignature(): string {
+    const viewport = this.viewport();
+    return viewport ? `${viewport.width}x${viewport.height}` : 'unknown';
+  }
+
+  private viewport(): { width: number; height: number } | undefined {
+    const scene = this.viewer.scene;
+    const width = scene.drawingBufferWidth ?? scene.canvas?.clientWidth ?? scene.canvas?.width;
+    const height = scene.drawingBufferHeight ?? scene.canvas?.clientHeight ?? scene.canvas?.height;
+    return typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0 ? { width, height } : undefined;
+  }
+}
+
+function isAnnotationExplicitlyVisible(annotation: Annotation): boolean {
+  const entity = annotation.entity;
+  if (entity.show === false) {
+    return false;
+  }
+  if ('isShowing' in entity && entity.isShowing === false) {
+    return false;
+  }
+  return true;
 }
 
 function annotationVertices(annotation: Annotation): Cartesian3[] {
@@ -264,6 +411,17 @@ function annotationVertices(annotation: Annotation): Cartesian3[] {
     case 'circle':
       return [annotation.center];
   }
+}
+
+function annotationVertexCount(annotation: Annotation): number {
+  return annotationVertices(annotation).length;
+}
+
+function cartesianSignature(position: Cartesian3 | undefined): string {
+  if (!position) {
+    return 'none';
+  }
+  return `${position.x.toFixed(3)},${position.y.toFixed(3)},${position.z.toFixed(3)}`;
 }
 
 function closestSegmentRatio(point: Cartesian2, from: Cartesian2, to: Cartesian2): number {

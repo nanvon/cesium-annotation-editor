@@ -14,6 +14,7 @@ import type { PickService } from '../core/PickService';
 import type { SnapResolution, SnapService } from '../core/SnapService';
 import type { EventEmitter } from '../events/EventEmitter';
 import { GeometryPreviewSession, MutablePositionSource } from '../core/GeometryPreviewSession';
+import { cancelFrame, requestFrame, type AnimationFrameHandle } from '../utils/browser';
 import { clampRadius, pointAlongSurface } from '../utils/circle';
 import { cloneCartesian, surfaceDistance } from '../utils/coordinates';
 import type { NormalizedOptions } from '../types';
@@ -41,9 +42,9 @@ export class EditController {
   private readonly handleEntities = new Map<string, Entity[]>();
   private hoveredHandle: Entity | null = null;
   private pendingDragScreenPosition: Cartesian2 | null = null;
-  private dragFrame: number | null = null;
+  private dragFrame: AnimationFrameHandle | null = null;
   private pendingHoverScreenPosition: Cartesian2 | null = null;
-  private hoverFrame: number | null = null;
+  private hoverFrame: AnimationFrameHandle | null = null;
   private activeSnapEvent: GeomanSnapEvent | null = null;
   private activeSnapKey: string | null = null;
 
@@ -215,7 +216,7 @@ export class EditController {
       return;
     }
 
-    this.dragFrame = window.requestAnimationFrame(() => {
+    this.dragFrame = requestFrame(() => {
       this.dragFrame = null;
       const latestScreenPosition = this.pendingDragScreenPosition;
       this.pendingDragScreenPosition = null;
@@ -266,7 +267,7 @@ export class EditController {
   private cancelDragFrame(): void {
     this.pendingDragScreenPosition = null;
     if (this.dragFrame !== null) {
-      window.cancelAnimationFrame(this.dragFrame);
+      cancelFrame(this.dragFrame);
       this.dragFrame = null;
     }
   }
@@ -424,7 +425,7 @@ export class EditController {
       return;
     }
 
-    this.hoverFrame = window.requestAnimationFrame(() => {
+    this.hoverFrame = requestFrame(() => {
       this.hoverFrame = null;
       const latestScreenPosition = this.pendingHoverScreenPosition;
       this.pendingHoverScreenPosition = null;
@@ -437,7 +438,7 @@ export class EditController {
   private cancelHoverFrame(): void {
     this.pendingHoverScreenPosition = null;
     if (this.hoverFrame !== null) {
-      window.cancelAnimationFrame(this.hoverFrame);
+      cancelFrame(this.hoverFrame);
       this.hoverFrame = null;
     }
   }

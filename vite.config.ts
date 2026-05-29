@@ -5,7 +5,7 @@ import dts from 'vite-plugin-dts';
 
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? './' : '/',
-  root: command === 'serve' ? 'examples/basic' : undefined,
+  root: command === 'serve' && process.env.VITEST !== 'true' ? 'examples/basic' : undefined,
   plugins: [
     command === 'serve' && cesium(),
     command === 'build' &&

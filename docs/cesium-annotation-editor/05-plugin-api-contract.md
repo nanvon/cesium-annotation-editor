@@ -369,8 +369,10 @@ fromJSON(items: AnnotationJSON[], options?: { clear?: boolean }): Annotation[];
 ```
 
 - `toJSON()` 把 Cesium `Cartesian3` 转成 `[longitude, latitude, height?]`。
+- `toJSON()` 返回的 `properties` 是深拷贝；修改导出的嵌套对象不会反向修改 editor 内部 annotation。
 - `fromJSON(items, { clear: true })` 会先执行 `clearAnnotations()`，再逐个 `addAnnotation()`。
 - `fromJSON()` 创建的 annotation 的 `source` 是 `'api'`。
+- `fromJSON()` / `fromJSONInput()` 会深拷贝输入 JSON 的 `properties`；导入后的 annotation 不共享调用方传入的可变嵌套对象。
 
 ### Events
 
@@ -543,10 +545,21 @@ interface GeomanLayerApi {
 
 - `layer.pm.enable()` 会选中该 annotation 并进入全局 edit mode。
 - `layer.pm.enableLayerDrag()` 会选中该 annotation 并进入全局 drag mode。
-- 当前没有真正隔离到单 layer 的 edit/drag mode，layer API 复用全局 mode。
-- `hasSelfIntersection()` 当前固定返回 `false`。
-- `dragging()` 当前固定返回 `false`。
+- `layer.pm.enabled()` 返回该 layer 自己的 edit 启用状态；通过 `layer.pm.enable()` 切换到另一 layer 时，旧 layer 会失效，不再简单等于全局 edit mode。
+- `layer.pm.layerDragEnabled()` 返回该 layer 自己的 drag 启用状态；通过 `layer.pm.enableLayerDrag()` 切换到另一 layer 时，旧 layer 会失效，不再简单等于全局 drag mode。
+- `editor.pm.enableGlobalEditMode()` / `editor.pm.enableGlobalDragMode()` 会把当前所有 annotation 标记为对应 layer 状态已启用。
+- 当前 Cesium 交互实现仍复用全局 edit/drag controller；layer API 的状态语义已经按 layer 维护，但底层控制器不是 Leaflet-Geoman 那种每个 layer 独立 handler。
+- `hasSelfIntersection()` 对 polygon 和 polyline 做经纬度平面段相交检测，至少能识别常见 bow-tie polygon；不处理孔洞、多环和高纬/跨反经线的完整测地线鲁棒性。
+- `dragging()` 返回该 layer 是否正处于整体 drag 操作中。
 - `layer.pm.on()` / `once()` 会自动过滤，只接收该 annotation/layer 相关事件。
+
+## Snapping visibility and performance
+
+- Snap 候选会跳过 `properties.snapIgnore === true`、`entity.show === false`、`entity.isShowing === false` 的 annotation。
+- `resolve()` 会过滤相机背面、地球 horizon 背面、无法投影到窗口坐标、或投影点落在当前 viewport + `snapDistance` 外的候选。
+- Annotation 候选按 annotation `updatedAt`、显隐、snap 选项和顶点数量做缓存；同一相机/viewport/signature 下重复 `resolve()` 会复用投影结果，不再每次无条件重投影全部 annotation 顶点/线段。
+- 地球背面判断使用基于 WGS84 最大半径的 horizon 近似，适合过滤明确在背面的地表候选。
+- 已知限制：Cesium terrain、3D Tiles、depth buffer 遮挡和透明/半透明对象遮挡无法在无渲染读回的稳定单元测试中可靠判定；当前只承诺过滤“明确不可见”的候选，不承诺判断所有 terrain/depth 遮挡。
 
 layer 级可订阅事件：
 

@@ -19,6 +19,8 @@ import {
 import { normalizeOptions } from './options';
 import { fromJSONInput, toJSON as serializeAnnotations } from './serialization/Serializer';
 import { Toolbar } from './toolbar/Toolbar';
+import { getBrowserDocument, getElementComputedStyle } from './utils/browser';
+import { hasSelfIntersection } from './utils/selfIntersection';
 import type {
   AddEvent,
   Annotation,
@@ -48,6 +50,16 @@ import type {
 
 const modes: EditorMode[] = ['idle', 'draw:point', 'draw:polyline', 'draw:circle', 'draw:polygon', 'edit', 'drag'];
 
+interface GeomanLayerRuntimeState {
+  editEnabled: boolean;
+  dragEnabled: boolean;
+}
+
+interface GeomanLayerStateChanges {
+  enabled: Annotation[];
+  disabled: Annotation[];
+}
+
 export class CesiumAnnotationEditor {
   readonly pm: GeomanApi;
   private readonly options: NormalizedOptions;
@@ -61,7 +73,10 @@ export class CesiumAnnotationEditor {
   private readonly drawController: DrawController;
   private readonly editController: EditController;
   private readonly dragController: DragController;
+  private readonly geomanLayerStates = new Map<string, GeomanLayerRuntimeState>();
   private geomanGlobalOptions: GeomanGlobalOptions = {};
+  private pendingSingleEditLayerId: string | null = null;
+  private pendingSingleDragLayerId: string | null = null;
   private toolbar: Toolbar | null;
   private attachedViewerPm = false;
   private previousViewerPmDescriptor: PropertyDescriptor | undefined;
@@ -226,6 +241,7 @@ export class CesiumAnnotationEditor {
     }
     const removed = this.store.remove(id);
     if (removed) {
+      this.geomanLayerStates.delete(id);
       this.editController.refreshHandles();
       this.events.emit('change', { source: 'remove' });
     }
@@ -301,13 +317,13 @@ export class CesiumAnnotationEditor {
   }
 
   private createToolbar(): Toolbar | null {
-    if (!this.options.toolbar || typeof document === 'undefined') {
+    if (!this.options.toolbar || !getBrowserDocument()) {
       return null;
     }
 
     const toolbarOptions: ToolbarOptions = this.options.toolbar === true ? {} : this.options.toolbar;
     const container = this.viewer.container as HTMLElement;
-    if (getComputedStyle(container).position === 'static') {
+    if (getElementComputedStyle(container)?.position === 'static') {
       container.style.position = 'relative';
     }
     return new Toolbar(container, toolbarOptions, {
@@ -374,30 +390,30 @@ export class CesiumAnnotationEditor {
       globalDrawModeEnabled: () => this.mode.startsWith('draw:'),
       enableGlobalEditMode: (options) => {
         this.applyGeomanEditOptions(options);
-        this.enableEditMode();
+        this.enableGeomanGlobalEditMode();
       },
-      disableGlobalEditMode: () => this.disableEditMode(),
+      disableGlobalEditMode: () => this.disableGeomanGlobalEditMode(),
       toggleGlobalEditMode: (options) => {
         if (this.mode === 'edit') {
-          this.disableEditMode();
+          this.disableGeomanGlobalEditMode();
         } else {
           this.applyGeomanEditOptions(options);
-          this.enableEditMode();
+          this.enableGeomanGlobalEditMode();
         }
       },
       globalEditModeEnabled: () => this.mode === 'edit',
       cancelGlobalEditMode: () => this.cancelGeomanMode('edit'),
       enableGlobalDragMode: (options) => {
         this.applyGeomanDragOptions(options);
-        this.enableDragMode();
+        this.enableGeomanGlobalDragMode();
       },
-      disableGlobalDragMode: () => this.disableDragMode(),
+      disableGlobalDragMode: () => this.disableGeomanGlobalDragMode(),
       toggleGlobalDragMode: (options) => {
         if (this.mode === 'drag') {
-          this.disableDragMode();
+          this.disableGeomanGlobalDragMode();
         } else {
           this.applyGeomanDragOptions(options);
-          this.enableDragMode();
+          this.enableGeomanGlobalDragMode();
         }
       },
       globalDragModeEnabled: () => this.mode === 'drag',
@@ -471,8 +487,12 @@ export class CesiumAnnotationEditor {
   private cancelGeomanMode(mode: Extract<EditorMode, 'edit' | 'drag'>): void {
     if (mode === 'edit') {
       this.editController.cancelActiveDrag();
+      const changes = this.setAllGeomanLayerStates('editEnabled', false);
+      this.emitGeomanLayerStateChanges(changes, 'pm:enable', 'pm:disable');
     } else {
       this.dragController.cancelActiveDrag();
+      const changes = this.setAllGeomanLayerStates('dragEnabled', false);
+      this.emitGeomanLayerStateChanges(changes, 'pm:dragenable', 'pm:dragdisable');
     }
     if (this.mode === mode) {
       this.clearMode();
@@ -481,6 +501,7 @@ export class CesiumAnnotationEditor {
   }
 
   private decorateAnnotation(annotation: Annotation): Annotation {
+    this.ensureGeomanLayerState(annotation.id);
     const entity = annotation.entity as GeomanEntity;
     if (!entity.pm) {
       Object.defineProperty(entity, 'pm', {
@@ -491,6 +512,152 @@ export class CesiumAnnotationEditor {
       });
     }
     return annotation;
+  }
+
+  private enableGeomanGlobalEditMode(): void {
+    this.pendingSingleEditLayerId = null;
+    if (this.mode === 'edit') {
+      const changes = this.setAllGeomanLayerStates('editEnabled', true);
+      this.editController.refreshHandles();
+      this.emitGeomanLayerStateChanges(changes, 'pm:enable', 'pm:disable');
+      return;
+    }
+    this.enableEditMode();
+  }
+
+  private disableGeomanGlobalEditMode(): void {
+    if (this.mode === 'edit') {
+      this.disableEditMode();
+      return;
+    }
+    const changes = this.setAllGeomanLayerStates('editEnabled', false);
+    this.emitGeomanLayerStateChanges(changes, 'pm:enable', 'pm:disable');
+  }
+
+  private enableGeomanGlobalDragMode(): void {
+    this.pendingSingleDragLayerId = null;
+    if (this.mode === 'drag') {
+      const changes = this.setAllGeomanLayerStates('dragEnabled', true);
+      this.emitGeomanLayerStateChanges(changes, 'pm:dragenable', 'pm:dragdisable');
+      return;
+    }
+    this.enableDragMode();
+  }
+
+  private disableGeomanGlobalDragMode(): void {
+    if (this.mode === 'drag') {
+      this.disableDragMode();
+      return;
+    }
+    const changes = this.setAllGeomanLayerStates('dragEnabled', false);
+    this.emitGeomanLayerStateChanges(changes, 'pm:dragenable', 'pm:dragdisable');
+  }
+
+  private enableSingleGeomanEditLayer(annotation: Annotation): void {
+    this.select(annotation.id);
+    if (this.mode !== 'edit') {
+      this.pendingSingleEditLayerId = annotation.id;
+      this.enableEditMode();
+      this.pendingSingleEditLayerId = null;
+      return;
+    }
+
+    const changes = this.setOnlyGeomanLayerState(annotation.id, 'editEnabled');
+    this.editController.refreshHandles();
+    this.emitGeomanLayerStateChanges(changes, 'pm:enable', 'pm:disable');
+  }
+
+  private enableSingleGeomanDragLayer(annotation: Annotation): void {
+    this.select(annotation.id);
+    if (this.mode !== 'drag') {
+      this.pendingSingleDragLayerId = annotation.id;
+      this.enableDragMode();
+      this.pendingSingleDragLayerId = null;
+      return;
+    }
+
+    const changes = this.setOnlyGeomanLayerState(annotation.id, 'dragEnabled');
+    this.emitGeomanLayerStateChanges(changes, 'pm:dragenable', 'pm:dragdisable');
+  }
+
+  private ensureGeomanLayerState(id: string): GeomanLayerRuntimeState {
+    const existing = this.geomanLayerStates.get(id);
+    if (existing) {
+      return existing;
+    }
+
+    const state: GeomanLayerRuntimeState = {
+      editEnabled: false,
+      dragEnabled: false
+    };
+    this.geomanLayerStates.set(id, state);
+    return state;
+  }
+
+  private setOnlyGeomanLayerState(
+    annotationId: string,
+    key: keyof GeomanLayerRuntimeState
+  ): GeomanLayerStateChanges {
+    const changes: GeomanLayerStateChanges = { enabled: [], disabled: [] };
+    for (const annotation of this.store.getAll()) {
+      const state = this.ensureGeomanLayerState(annotation.id);
+      const next = annotation.id === annotationId;
+      if (state[key] === next) {
+        continue;
+      }
+      state[key] = next;
+      (next ? changes.enabled : changes.disabled).push(annotation);
+    }
+    return changes;
+  }
+
+  private setAllGeomanLayerStates(key: keyof GeomanLayerRuntimeState, enabled: boolean): GeomanLayerStateChanges {
+    const changes: GeomanLayerStateChanges = { enabled: [], disabled: [] };
+    for (const annotation of this.store.getAll()) {
+      const state = this.ensureGeomanLayerState(annotation.id);
+      if (state[key] === enabled) {
+        continue;
+      }
+      state[key] = enabled;
+      (enabled ? changes.enabled : changes.disabled).push(annotation);
+    }
+    return changes;
+  }
+
+  private setGeomanLayerState(
+    annotationId: string,
+    key: keyof GeomanLayerRuntimeState,
+    enabled: boolean
+  ): GeomanLayerStateChanges {
+    const annotation = this.store.get(annotationId);
+    const state = this.ensureGeomanLayerState(annotationId);
+    if (!annotation || state[key] === enabled) {
+      return { enabled: [], disabled: [] };
+    }
+
+    state[key] = enabled;
+    return enabled ? { enabled: [annotation], disabled: [] } : { enabled: [], disabled: [annotation] };
+  }
+
+  private hasEnabledGeomanEditLayer(): boolean {
+    return this.store.getAll().some((annotation) => this.ensureGeomanLayerState(annotation.id).editEnabled);
+  }
+
+  private hasEnabledGeomanDragLayer(): boolean {
+    return this.store.getAll().some((annotation) => this.ensureGeomanLayerState(annotation.id).dragEnabled);
+  }
+
+  private emitGeomanLayerStateChanges(
+    changes: GeomanLayerStateChanges,
+    enabledEvent: 'pm:enable' | 'pm:dragenable',
+    disabledEvent: 'pm:disable' | 'pm:dragdisable'
+  ): void {
+    for (const annotation of changes.disabled) {
+      this.emitGeomanLayerEvent(disabledEvent, annotation);
+    }
+    for (const annotation of changes.enabled) {
+      this.emitGeomanLayerEvent(enabledEvent, annotation);
+    }
   }
 
   private createGeomanLayerApi(annotation: Annotation): GeomanLayerApi {
@@ -504,22 +671,19 @@ export class CesiumAnnotationEditor {
       enable: (options) => {
         Object.assign(layerOptions, options);
         this.applyGeomanEditOptions(options);
-        this.select(annotation.id);
-        if (this.mode === 'edit') {
-          this.events.emit('pm:enable', annotationToGeomanLayer(annotation));
-          return;
-        }
-        this.enableEditMode();
+        this.enableSingleGeomanEditLayer(annotation);
       },
       disable: () => {
         if (this.getSelected()?.id === annotation.id) {
           this.select(null);
         }
-        if (this.mode === 'edit') {
+        const changes = this.setGeomanLayerState(annotation.id, 'editEnabled', false);
+        this.emitGeomanLayerStateChanges(changes, 'pm:enable', 'pm:disable');
+        if (!this.hasEnabledGeomanEditLayer() && this.mode === 'edit') {
           this.disableEditMode();
-          return;
+        } else {
+          this.editController.refreshHandles();
         }
-        this.events.emit('pm:disable', annotationToGeomanLayer(annotation));
       },
       toggleEdit: (options) => {
         if (api.enabled()) {
@@ -528,8 +692,8 @@ export class CesiumAnnotationEditor {
           api.enable(options);
         }
       },
-      enabled: () => this.mode === 'edit',
-      hasSelfIntersection: () => false,
+      enabled: () => this.ensureGeomanLayerState(annotation.id).editEnabled,
+      hasSelfIntersection: () => hasSelfIntersection(annotation),
       remove: () => this.removeAnnotation(annotation.id),
       getShape: () => annotationTypeToGeomanShape(annotation.type),
       setOptions: (options) => {
@@ -541,22 +705,17 @@ export class CesiumAnnotationEditor {
       enableLayerDrag: (options) => {
         Object.assign(layerOptions, options);
         this.applyGeomanDragOptions(options);
-        this.select(annotation.id);
-        if (this.mode === 'drag') {
-          this.events.emit('pm:dragenable', annotationToGeomanLayer(annotation));
-          return;
-        }
-        this.enableDragMode();
+        this.enableSingleGeomanDragLayer(annotation);
       },
       disableLayerDrag: () => {
-        if (this.mode === 'drag') {
+        const changes = this.setGeomanLayerState(annotation.id, 'dragEnabled', false);
+        this.emitGeomanLayerStateChanges(changes, 'pm:dragenable', 'pm:dragdisable');
+        if (!this.hasEnabledGeomanDragLayer() && this.mode === 'drag') {
           this.disableDragMode();
-          return;
         }
-        this.events.emit('pm:dragdisable', annotationToGeomanLayer(annotation));
       },
-      layerDragEnabled: () => this.mode === 'drag',
-      dragging: () => false,
+      layerDragEnabled: () => this.ensureGeomanLayerState(annotation.id).dragEnabled,
+      dragging: () => this.dragController.isDragging(annotation.id),
       cancel: () => {
         this.editController.cancelActiveDrag(annotation.id);
         this.dragController.cancelActiveDrag(annotation.id);
@@ -609,12 +768,6 @@ export class CesiumAnnotationEditor {
 
   private emitGeomanLayerEvent(name: 'pm:enable' | 'pm:disable' | 'pm:dragenable' | 'pm:dragdisable', annotation: Annotation): void {
     this.events.emit(name, annotationToGeomanLayer(annotation));
-  }
-
-  private emitGeomanLayerEvents(name: 'pm:enable' | 'pm:disable' | 'pm:dragenable' | 'pm:dragdisable'): void {
-    for (const annotation of this.store.getAll()) {
-      this.emitGeomanLayerEvent(name, annotation);
-    }
   }
 
   private enableGeomanDraw(shape: GeomanShapeInput, options?: GeomanDrawOptions): void {
@@ -756,11 +909,17 @@ export class CesiumAnnotationEditor {
       this.drawController.activate(type);
     } else if (mode === 'edit') {
       this.editController.activate();
-      this.emitGeomanLayerEvents('pm:enable');
+      const changes = this.pendingSingleEditLayerId
+        ? this.setOnlyGeomanLayerState(this.pendingSingleEditLayerId, 'editEnabled')
+        : this.setAllGeomanLayerStates('editEnabled', true);
+      this.emitGeomanLayerStateChanges(changes, 'pm:enable', 'pm:disable');
     } else if (mode === 'drag') {
       this.editController.deactivate(true);
       this.dragController.activate();
-      this.emitGeomanLayerEvents('pm:dragenable');
+      const changes = this.pendingSingleDragLayerId
+        ? this.setOnlyGeomanLayerState(this.pendingSingleDragLayerId, 'dragEnabled')
+        : this.setAllGeomanLayerStates('dragEnabled', true);
+      this.emitGeomanLayerStateChanges(changes, 'pm:dragenable', 'pm:dragdisable');
     }
   }
 
@@ -769,10 +928,12 @@ export class CesiumAnnotationEditor {
       this.drawController.deactivate(reason, true);
     } else if (mode === 'edit') {
       this.editController.deactivate(true);
-      this.emitGeomanLayerEvents('pm:disable');
+      const changes = this.setAllGeomanLayerStates('editEnabled', false);
+      this.emitGeomanLayerStateChanges(changes, 'pm:enable', 'pm:disable');
     } else if (mode === 'drag') {
       this.dragController.deactivate();
-      this.emitGeomanLayerEvents('pm:dragdisable');
+      const changes = this.setAllGeomanLayerStates('dragEnabled', false);
+      this.emitGeomanLayerStateChanges(changes, 'pm:dragenable', 'pm:dragdisable');
     }
     this.cameraGuard.forceUnlock();
   }

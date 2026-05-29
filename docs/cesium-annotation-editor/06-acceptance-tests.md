@@ -2,6 +2,20 @@
 
 这些验收用例面向未来从零实现的 Cesium 插件。它们既可以人工测试，也可以转换成 Playwright/Cypress 场景测试。
 
+当前仓库已有 Vitest 单元测试入口：
+
+```bash
+npm test
+```
+
+已自动化覆盖的发布可信度用例包括：
+
+- Serializer `properties` 深拷贝隔离。
+- Geoman `layer.pm.enabled()` / `layerDragEnabled()` per-layer 状态、切换 active layer 后旧 layer 失效、`dragging()` 当前拖拽状态、polygon 自相交检测。
+- Snap 对隐藏 annotation、相机背面、地球背面、viewport 外候选的过滤。
+- Snap 重复 `resolve()` 复用候选投影缓存，不再无条件全量重投影所有 annotation 顶点。
+- 无 `window` / `document` 时，`toolbar: false` 的 Node/SSR 构造和销毁路径不抛错。
+
 ## Toolbar and mode
 
 ### T001 toolbar renders
@@ -357,6 +371,21 @@ Given 地图上已有 annotation 且 `properties.snapIgnore === true`
 When 用户绘制或编辑到该 annotation 附近  
 Then 该 annotation 不作为吸附候选
 
+### T655 snap ignores clearly invisible candidates
+
+Given 地图上已有隐藏 annotation、相机背面 annotation、地球背面 annotation 和 viewport 外 annotation
+When 用户在这些候选屏幕位置附近绘制或编辑
+Then Snap 不吸附到这些候选
+And 不对明确隐藏、相机背面或地球背面候选执行窗口坐标投影
+
+### T656 snap caches projected annotation candidates
+
+Given 地图上已有多个 annotation 顶点
+And 相机、viewport、annotation `updatedAt` 和 snap 配置都没有变化
+When 连续两次调用 Snap resolve
+Then 第二次不应无条件重新投影全部 annotation 顶点/线段
+And 仍能返回正确最近候选
+
 ## API and lifecycle
 
 ### T701 addAnnotation
@@ -381,6 +410,13 @@ When 调用 `toJSON()` 再 `clearAnnotations()` 再 `fromJSON()`
 Then 恢复后的 annotation 数量和类型一致  
 And 圆仍保存 center/radius，而不是 polygon approximation
 
+### T703a serialization property isolation
+
+Given annotation 或 JSON input 中包含嵌套 `properties`
+When 调用 `toJSON()` 或 `fromJSON()` / `fromJSONInput()`
+Then 返回值中的 `properties` 与输入或内部 annotation 不共享可变引用
+And 修改任一侧嵌套对象不会影响另一侧
+
 ### T704 destroy cleanup
 
 Given editor 正在 draw/edit/drag 任一 mode  
@@ -390,6 +426,33 @@ And ScreenSpaceEventHandler 被销毁
 And helper/working entities 被移除  
 And Cesium camera input 状态恢复  
 And 再次调用 `destroy()` 不报错
+
+### T704a SSR import and construction guard
+
+Given 当前运行环境没有 `window` 和 `document`
+When 导入插件模块并以 `toolbar: false` 创建 editor
+Then import、constructor 和 `destroy()` 都不抛错
+
+### T705 Geoman per-layer state
+
+Given 地图上已有两个 annotation layer
+When 调用第一个 `layer.pm.enable()` 再调用第二个 `layer.pm.enable()`
+Then 第二个 `enabled()` 为 `true`
+And 第一个 `enabled()` 为 `false`
+When 调用 `editor.pm.enableGlobalEditMode()`
+Then 两个 layer 的 `enabled()` 都为 `true`
+
+### T706 Geoman layer geometry helpers
+
+Given 地图上已有一个普通 polygon 和一个 bow-tie polygon
+Then 普通 polygon 的 `layer.pm.hasSelfIntersection()` 为 `false`
+And bow-tie polygon 的 `layer.pm.hasSelfIntersection()` 为 `true`
+When 某个 layer 正在整体拖拽
+Then 只有该 layer 的 `layer.pm.dragging()` 为 `true`
+
+## Known Cesium visibility limits
+
+Snap 可稳定过滤明确不可见的候选：显式隐藏、相机背面、地球 horizon 背面、无法投影或 viewport 外。Terrain、3D Tiles、depth buffer、透明对象和自定义 shader 造成的遮挡依赖具体渲染帧与深度读回，当前单元测试不承诺覆盖；这类场景需要后续浏览器/场景级测试补充。
 
 ## Negative cases
 

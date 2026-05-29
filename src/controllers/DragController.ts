@@ -6,6 +6,7 @@ import type { EntityFactory } from '../core/EntityFactory';
 import type { PickService } from '../core/PickService';
 import type { EventEmitter } from '../events/EventEmitter';
 import { GeometryPreviewSession } from '../core/GeometryPreviewSession';
+import { cancelFrame, requestFrame, type AnimationFrameHandle } from '../utils/browser';
 import { cloneCartesian } from '../utils/coordinates';
 
 interface ActiveDrag {
@@ -19,9 +20,9 @@ export class DragController {
   private handler: ScreenSpaceEventHandler | null = null;
   private activeDrag: ActiveDrag | null = null;
   private pendingDragScreenPosition: Cartesian2 | null = null;
-  private dragFrame: number | null = null;
+  private dragFrame: AnimationFrameHandle | null = null;
   private pendingHoverScreenPosition: Cartesian2 | null = null;
-  private hoverFrame: number | null = null;
+  private hoverFrame: AnimationFrameHandle | null = null;
 
   constructor(
     private readonly viewer: Viewer,
@@ -84,7 +85,7 @@ export class DragController {
       return;
     }
 
-    this.dragFrame = window.requestAnimationFrame(() => {
+    this.dragFrame = requestFrame(() => {
       this.dragFrame = null;
       const latestScreenPosition = this.pendingDragScreenPosition;
       this.pendingDragScreenPosition = null;
@@ -120,7 +121,7 @@ export class DragController {
       return;
     }
 
-    this.hoverFrame = window.requestAnimationFrame(() => {
+    this.hoverFrame = requestFrame(() => {
       this.hoverFrame = null;
       const latestScreenPosition = this.pendingHoverScreenPosition;
       this.pendingHoverScreenPosition = null;
@@ -156,7 +157,7 @@ export class DragController {
   private cancelDragFrame(): void {
     this.pendingDragScreenPosition = null;
     if (this.dragFrame !== null) {
-      window.cancelAnimationFrame(this.dragFrame);
+      cancelFrame(this.dragFrame);
       this.dragFrame = null;
     }
   }
@@ -164,7 +165,7 @@ export class DragController {
   private cancelHoverFrame(): void {
     this.pendingHoverScreenPosition = null;
     if (this.hoverFrame !== null) {
-      window.cancelAnimationFrame(this.hoverFrame);
+      cancelFrame(this.hoverFrame);
       this.hoverFrame = null;
     }
   }
@@ -202,6 +203,13 @@ export class DragController {
     this.cameraGuard.unlock();
     this.viewer.scene.requestRender();
     this.setCursor('idle');
+  }
+
+  isDragging(annotationId?: string): boolean {
+    if (!this.activeDrag) {
+      return false;
+    }
+    return annotationId ? this.activeDrag.annotation.id === annotationId : true;
   }
 
   private setCursor(state: 'idle' | 'hover' | 'dragging'): void {
