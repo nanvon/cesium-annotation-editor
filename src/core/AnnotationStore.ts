@@ -7,6 +7,7 @@ import type { EntityFactory } from './EntityFactory';
 export class AnnotationStore {
   private annotations = new Map<string, Annotation>();
   private idsByEntity = new WeakMap<Entity, string>();
+  private revision = 0;
 
   constructor(
     private readonly viewer: Viewer,
@@ -50,6 +51,7 @@ export class AnnotationStore {
     const annotation = createAnnotationModel(base, input);
     this.annotations.set(id, annotation);
     this.idsByEntity.set(entity, id);
+    this.revision += 1;
     return annotation;
   }
 
@@ -58,6 +60,7 @@ export class AnnotationStore {
     Object.assign(annotation, clonePatch(patch), { updatedAt: Date.now() });
     validateAnnotation(annotation);
     this.entityFactory.updateAnnotationEntity(annotation);
+    this.revision += 1;
     return annotation;
   }
 
@@ -67,6 +70,7 @@ export class AnnotationStore {
     if (options.updateEntity ?? true) {
       this.entityFactory.updateAnnotationEntity(annotation);
     }
+    this.revision += 1;
     return annotation;
   }
 
@@ -78,6 +82,7 @@ export class AnnotationStore {
     this.viewer.entities.remove(annotation.entity);
     this.annotations.delete(id);
     this.idsByEntity.delete(annotation.entity);
+    this.revision += 1;
     return true;
   }
 
@@ -102,12 +107,29 @@ export class AnnotationStore {
     return Array.from(this.annotations.values());
   }
 
+  /**
+   * 单调递增的修订号，在新增 / 更新 / touch / 删除 / 清空时变化。
+   * 供缓存（如吸附候选）以 O(1) 判断数据是否变化，避免遍历全量标注。
+   */
+  getRevision(): number {
+    return this.revision;
+  }
+
+  /**
+   * 手动递增修订号。用于"绕过 store 的变更"——例如外部直接修改 `entity.show`
+   * 改变可见性后，需要让依赖修订号的缓存（吸附候选）失效。
+   */
+  bumpRevision(): void {
+    this.revision += 1;
+  }
+
   clear(): void {
     for (const annotation of this.annotations.values()) {
       this.viewer.entities.remove(annotation.entity);
       this.idsByEntity.delete(annotation.entity);
     }
     this.annotations.clear();
+    this.revision += 1;
   }
 }
 

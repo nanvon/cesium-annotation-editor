@@ -11,9 +11,6 @@ const defaultStyles = {
   outlineWidth: 2,
   handleColor: '#ffffff',
   handleOutlineColor: '#2f80ed',
-  snapColor: 'rgba(47, 128, 237, 0.18)',
-  snapOutlineColor: '#2f80ed',
-  snapPixelSize: 16,
   workingColor: '#2f80ed'
 };
 
@@ -45,7 +42,6 @@ export function normalizeOptions(options: CesiumAnnotationEditorOptions = {}): N
       snapDistance: options.snapping?.snapDistance ?? 20,
       snapVertex: options.snapping?.snapVertex ?? true,
       snapSegment: options.snapping?.snapSegment ?? true,
-      showIndicator: options.snapping?.showIndicator ?? true,
       disableWithAlt: options.snapping?.disableWithAlt ?? true
     },
     styles: {

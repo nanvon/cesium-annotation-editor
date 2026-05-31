@@ -47,7 +47,6 @@ export class EntityFactory {
   private helperEntities = new Set<Entity>();
   private workingEntities = new Set<Entity>();
   private circleOutlineSources = new WeakMap<Entity, CircleOutlineSource>();
-  private snapIndicator: Entity | null = null;
 
   constructor(
     private readonly viewer: Viewer,
@@ -115,40 +114,6 @@ export class EntityFactory {
 
   createPointCursor(position: Cartesian3): Entity {
     return this.createWorkingEntity(this.pointMarkerOptions(position));
-  }
-
-  showSnapIndicator(position: Cartesian3): void {
-    if (!this.options.snapping.showIndicator) {
-      this.hideSnapIndicator();
-      return;
-    }
-
-    if (!this.snapIndicator) {
-      this.snapIndicator = this.viewer.entities.add({
-        position,
-        point: {
-          pixelSize: this.options.styles.snapPixelSize,
-          color: toColor(this.options.styles.snapColor),
-          outlineColor: toColor(this.options.styles.snapOutlineColor),
-          outlineWidth: 3,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          heightReference: this.heightReference()
-        }
-      });
-      return;
-    }
-
-    this.updatePointPosition(this.snapIndicator, position);
-  }
-
-  hideSnapIndicator(): void {
-    if (!this.snapIndicator) {
-      return;
-    }
-
-    this.viewer.entities.remove(this.snapIndicator);
-    this.metadataStore.delete(this.snapIndicator);
-    this.snapIndicator = null;
   }
 
   createWorkingPolyline(positions: Cartesian3[]): Entity {
@@ -350,7 +315,6 @@ export class EntityFactory {
   }
 
   removeHelperEntities(): void {
-    this.hideSnapIndicator();
     for (const entity of this.helperEntities) {
       this.viewer.entities.remove(entity);
       this.metadataStore.delete(entity);
@@ -359,7 +323,6 @@ export class EntityFactory {
   }
 
   removeWorkingEntities(): void {
-    this.hideSnapIndicator();
     for (const entity of this.workingEntities) {
       this.viewer.entities.remove(entity);
       this.metadataStore.delete(entity);

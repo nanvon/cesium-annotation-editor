@@ -31,7 +31,10 @@ import 'cesium-annotation-editor/styles.css';
 
 const viewer = new Viewer('cesiumContainer', {
   animation: false,
-  timeline: false
+  timeline: false,
+  // 建议开启按需渲染，空闲时不重绘；编辑器在几何/预览变更时会主动 requestRender。
+  requestRenderMode: true,
+  maximumRenderTimeChange: Infinity
 });
 
 const editor = new CesiumAnnotationEditor(viewer, {
@@ -132,7 +135,6 @@ const editor = new CesiumAnnotationEditor(viewer, {
     snapDistance: 20,
     snapVertex: true,
     snapSegment: true,
-    showIndicator: true,
     disableWithAlt: true
   },
   styles: {
@@ -300,7 +302,7 @@ Geoman 风格事件包括 `pm:create`、`pm:update`、`pm:edit`、`pm:dragstart`
 
 ## Snapping
 
-Snapping 默认开启，绘制和编辑时会吸附到已有 annotation 的顶点或线段，也会吸附到当前绘制中的可用顶点/线段。
+Snapping 默认开启，绘制和编辑时会吸附到已有 annotation 的顶点或线段；circle 会提供圆心和采样圆周边界作为候选。命中吸附时，当前 cursor marker、polygon hint line 终点或正在拖拽的 handle 会直接移动到吸附位置。
 
 ```ts
 editor.on('pm:snap', ({ snapPosition, layerInteractedWith, snapTargetType }) => {
@@ -312,7 +314,7 @@ editor.on('pm:unsnap', ({ snapPosition }) => {
 });
 ```
 
-通过 `properties.snapIgnore = true` 添加的 annotation 不参与吸附候选。
+通过 `properties.snapIgnore = true` 添加的 annotation 不参与吸附候选。编辑某个 annotation 时会排除自身；绘制 polygon 时只有首点可作为 self-snap 候选用于闭合，且至少已有 3 个顶点才会触发完成。按住 `Alt` 会临时禁用 snapping。
 
 ## Toolbar
 
@@ -332,6 +334,16 @@ new CesiumAnnotationEditor(viewer, {
 
 可用按钮：`drawPoint`、`drawPolyline`、`drawCircle`、`drawPolygon`、`editMode`、`dragMode`、`finish`、`cancel`、`removeLastVertex`。
 
+## 性能
+
+面向几百 ~ 2000 个标注的编辑场景，做了以下优化：
+
+- **按需渲染**：编辑器在绘制 / 编辑 / 拖拽预览等几何变更时会主动调用 `viewer.scene.requestRender()`，因此强烈建议宿主 `Viewer` 开启 `requestRenderMode: true`，空闲时不重绘以降低 GPU/CPU 占用。
+- **handle 视口裁剪**：全局编辑模式保持 Geoman 语义（所有图形同时可编辑），但只为当前视口内的标注创建顶点 handle，相机停止移动时增量重建。handle 数量随屏幕可见量而非标注总量增长。
+- **吸附候选缓存**：吸附候选与屏幕投影按标注版本号、相机和视口缓存，避免每次鼠标移动重复计算。
+
+更完整的设计见 [大数据量性能设计](./docs/cesium-annotation-editor/07-large-scale-performance-design.md)。
+
 ## 生命周期
 
 ```ts
@@ -339,7 +351,7 @@ editor.destroy();
 editor.isDestroyed();
 ```
 
-`destroy()` 可重复调用。默认 `destroyBehavior: 'keep-annotations'` 会保留正式 annotation entity，只清理工作图层、helper、toolbar、事件监听、snapping indicator 和 `viewer.pm` 挂载。设置为 `'remove-all'` 时会同时删除所有 annotation。
+`destroy()` 可重复调用。默认 `destroyBehavior: 'keep-annotations'` 会保留正式 annotation entity，只清理工作图层、helper、toolbar、事件监听和 `viewer.pm` 挂载。设置为 `'remove-all'` 时会同时删除所有 annotation。
 
 ## Demo
 
@@ -356,6 +368,7 @@ npm run demo
 - [交互规格](./docs/cesium-annotation-editor/02-interaction-spec.md)
 - [Cesium 技术设计](./docs/cesium-annotation-editor/04-cesium-technical-design.md)
 - [验收用例](./docs/cesium-annotation-editor/06-acceptance-tests.md)
+- [大数据量性能设计](./docs/cesium-annotation-editor/07-large-scale-performance-design.md)
 
 ## 兼容性
 

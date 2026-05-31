@@ -101,7 +101,7 @@ export class CesiumAnnotationEditor {
     this.entityFactory = new EntityFactory(viewer, this.options, this.metadataStore);
     this.store = new AnnotationStore(viewer, this.entityFactory);
     this.pickService = new PickService(viewer, this.metadataStore, (id) => this.store.get(id));
-    this.snapService = new SnapService(viewer, this.options, this.store, this.entityFactory);
+    this.snapService = new SnapService(viewer, this.options, this.store);
     this.cameraGuard = new CameraInputGuard(viewer);
     this.drawController = new DrawController(
       viewer,

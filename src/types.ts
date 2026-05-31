@@ -35,9 +35,6 @@ export interface AnnotationStyle {
   outlineWidth?: number;
   handleColor?: string;
   handleOutlineColor?: string;
-  snapColor?: string;
-  snapOutlineColor?: string;
-  snapPixelSize?: number;
   workingColor?: string;
 }
 
@@ -90,7 +87,6 @@ export interface SnappingOptions {
   snapDistance?: number;
   snapVertex?: boolean;
   snapSegment?: boolean;
-  showIndicator?: boolean;
   disableWithAlt?: boolean;
 }
 

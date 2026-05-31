@@ -84,7 +84,6 @@ interface CesiumAnnotationEditorOptions {
     snapDistance: 20,
     snapVertex: true,
     snapSegment: true,
-    showIndicator: true,
     disableWithAlt: true
   },
   styles: {
@@ -98,9 +97,6 @@ interface CesiumAnnotationEditorOptions {
     outlineWidth: 2,
     handleColor: '#ffffff',
     handleOutlineColor: '#2f80ed',
-    snapColor: 'rgba(47, 128, 237, 0.18)',
-    snapOutlineColor: '#2f80ed',
-    snapPixelSize: 16,
     workingColor: '#2f80ed'
   },
   destroyBehavior: 'keep-annotations'
@@ -122,7 +118,7 @@ interface CesiumAnnotationEditorOptions {
 | `edit.allowVertexInsert` / `edit.allowVertexDelete` | 类型中保留；当前实现只支持移动已有顶点。 |
 | `drag.strategy` | 类型接受 `cartographic-delta` 和 `enu`；当前拖拽实现使用 cartographic delta。 |
 | `snapping` | 控制绘制和编辑过程中的顶点/线段吸附。 |
-| `styles` | 控制 annotation、helper、working geometry 和 snapping indicator 的颜色与尺寸。 |
+| `styles` | 控制 annotation、helper 和 working geometry 的颜色与尺寸。 |
 | `destroyBehavior` | `keep-annotations` 保留正式 annotation entity；`remove-all` 同时删除所有 annotation。 |
 
 ## Core Types
@@ -200,9 +196,6 @@ interface AnnotationStyle {
   outlineWidth?: number;
   handleColor?: string;
   handleOutlineColor?: string;
-  snapColor?: string;
-  snapOutlineColor?: string;
-  snapPixelSize?: number;
   workingColor?: string;
 }
 
@@ -605,7 +598,7 @@ interface GeomanLayerApi {
 
 - Snap 候选会跳过 `properties.snapIgnore === true`、`entity.show === false`、`entity.isShowing === false` 的 annotation。
 - `resolve()` 会过滤相机背面、地球 horizon 背面、无法投影到窗口坐标、或投影点落在当前 viewport + `snapDistance` 外的候选。
-- Annotation 候选按 annotation `updatedAt`、显隐、snap 选项和顶点数量做缓存；同一相机/viewport/signature 下重复 `resolve()` 会复用投影结果，不再每次无条件重投影全部 annotation 顶点/线段。
+- Annotation 候选按 store revision 和 snap 选项做缓存；同一相机/viewport/signature 下重复 `resolve()` 会复用投影结果，不再每次无条件重投影全部 annotation 顶点/线段。
 - 地球背面判断使用基于 WGS84 最大半径的 horizon 近似，适合过滤明确在背面的地表候选。
 - 已知限制：Cesium terrain、3D Tiles、depth buffer 遮挡和透明/半透明对象遮挡无法在无渲染读回的稳定单元测试中可靠判定；当前只承诺过滤“明确不可见”的候选，不承诺判断所有 terrain/depth 遮挡。
 
@@ -974,7 +967,6 @@ interface SnappingOptions {
   snapDistance?: number;
   snapVertex?: boolean;
   snapSegment?: boolean;
-  showIndicator?: boolean;
   disableWithAlt?: boolean;
 }
 ```
@@ -982,12 +974,14 @@ interface SnappingOptions {
 行为：
 
 - 默认启用。
-- 候选目标包括已有 annotation 的顶点和线段，也包括当前绘制中的 working positions。
-- `snapVertex` 优先级高于 `snapSegment`。
+- 候选目标包括已有 annotation 的顶点和线段；circle 额外提供圆心和采样圆周边界。
+- 当前绘制/编辑的临时 entity 不参与普通 snap；draw polygon 仅在已有 3 个顶点后把首点作为 self-snap 候选用于闭合。
+- 线段命中后，如果最近端点距离低于 `snapDistance` 且 `snapVertex` 开启，则端点优先。
 - `snapDistance` 是屏幕像素距离。
 - `properties.snapIgnore === true` 的 annotation 会被排除。
+- 编辑某个 annotation 时会排除自身。
 - `disableWithAlt` 为 `true` 时，按住 `Alt` 会临时关闭 snapping。
-- `showIndicator` 控制是否显示吸附指示点。
+- 命中吸附目标时，当前 cursor marker、hint line 终点或 handle 直接移动到吸附位置。
 
 ## Error Handling
 

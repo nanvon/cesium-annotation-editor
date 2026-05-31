@@ -246,13 +246,14 @@ toolbar 不直接实现绘制逻辑，只调用 mode manager。
 
 默认支持基础吸附：
 
-- 绘制点、线、多边形、圆心和圆半径时，鼠标靠近已有标注顶点或线段会吸附到最近目标。
+- 绘制点、线、多边形、圆心和圆半径时，鼠标靠近已有标注顶点或线段会吸附到最近目标；circle 提供圆心和采样圆周边界作为候选。
 - 编辑 point/vertex/center/radius handle 时，拖动位置会吸附到其他 annotation 的顶点或线段。
 - 吸附距离使用屏幕像素，默认 `20px`。
 - 顶点吸附优先于线段吸附；同类目标取最近距离。
 - 编辑某个 annotation 时，不吸附到同一个 annotation，避免拖动自身顶点时抖动或塌缩。
 - annotation 的 `properties.snapIgnore === true` 时不参与吸附候选。
-- 命中吸附目标时显示独立 snap indicator，不写入业务标注集合。
+- 当前绘制/编辑的临时 entity 不参与普通吸附；绘制 polygon 时仅首点可作为 self-snap 候选用于闭合，且顶点数不足 3 时不完成。
+- 命中吸附目标时，当前 cursor marker、polygon hint line 终点或被拖拽 handle 直接移动到吸附点，不创建额外 Cesium entity。
 - 吸附过程中触发 `pm:snapdrag`，进入新吸附目标时触发 `pm:snap`，离开吸附目标时触发 `pm:unsnap`。
 
 移动端手势不作为第一版强验收项。

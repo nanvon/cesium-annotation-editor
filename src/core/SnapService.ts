@@ -5,53 +5,69 @@ import {
   Ellipsoid,
   Math as CesiumMath,
   SceneTransforms,
-  type Entity,
   type Viewer
 } from 'cesium';
-import type { Annotation, GeomanEntity, NormalizedOptions } from '../types';
+import type { Annotation, AnnotationType, GeomanEntity, NormalizedOptions } from '../types';
 import { addWindowEventListener } from '../utils/browser';
+import { circleOutlinePositions } from '../utils/circle';
 import { cloneCartesian } from '../utils/coordinates';
 import type { AnnotationStore } from './AnnotationStore';
-import type { EntityFactory } from './EntityFactory';
 
 export interface SnapContext {
-  annotationId?: string;
-  workingLayer?: Entity;
-  marker?: Entity;
-  workingPositions?: Cartesian3[];
+  mode: 'draw' | 'edit';
+  shape: AnnotationType;
+  excludeAnnotationId?: string;
+  selfSnapPositions?: Cartesian3[];
+  allowSelfSnapOnly?: boolean;
 }
 
 export interface SnapTarget {
   key: string;
   type: 'vertex' | 'segment';
+  source: 'annotation' | 'self';
   position: Cartesian3;
   distance: number;
   annotation?: Annotation;
+  annotationType?: AnnotationType;
   layer?: GeomanEntity;
   segment?: [Cartesian3, Cartesian3];
   vertexIndex?: number;
+}
+
+export interface SnapInfo {
+  mode: SnapContext['mode'];
+  shape: AnnotationType;
+  source: SnapTarget['source'];
+  annotationType?: AnnotationType;
+  priority: number;
 }
 
 export interface SnapResolution {
   position?: Cartesian3;
   snapped: boolean;
   target?: SnapTarget;
+  snapInfo?: SnapInfo;
 }
 
-interface VertexCandidate {
+interface BaseCandidate {
   key: string;
+  source: 'annotation' | 'self';
+  annotation?: Annotation;
+  annotationType?: AnnotationType;
+}
+
+interface VertexCandidate extends BaseCandidate {
   type: 'vertex';
   position: Cartesian3;
-  annotation?: Annotation;
   vertexIndex?: number;
 }
 
-interface SegmentCandidate {
-  key: string;
+interface SegmentCandidate extends BaseCandidate {
   type: 'segment';
   from: Cartesian3;
   to: Cartesian3;
-  annotation?: Annotation;
+  fromVertexIndex?: number;
+  toVertexIndex?: number;
 }
 
 type Candidate = VertexCandidate | SegmentCandidate;
@@ -82,13 +98,11 @@ export class SnapService {
   constructor(
     private readonly viewer: Viewer,
     private readonly options: NormalizedOptions,
-    private readonly store: AnnotationStore,
-    private readonly entityFactory: EntityFactory
+    private readonly store: AnnotationStore
   ) {
     this.removeKeydownListener = addWindowEventListener('keydown', (event) => {
       if (event.key === 'Alt') {
         this.altKeyPressed = true;
-        this.clear();
       }
     });
     this.removeKeyupListener = addWindowEventListener('keyup', (event) => {
@@ -98,29 +112,29 @@ export class SnapService {
     });
   }
 
-  resolve(screenPosition: Cartesian2, fallbackPosition?: Cartesian3, context: SnapContext = {}): SnapResolution {
+  resolve(screenPosition: Cartesian2, fallbackPosition: Cartesian3 | undefined, context: SnapContext): SnapResolution {
     const fallback = fallbackPosition ? cloneCartesian(fallbackPosition) : undefined;
     if (!this.shouldSnap()) {
-      this.clear();
       return { position: fallback, snapped: false };
     }
 
     const target = this.findTarget(screenPosition, context);
     if (!target) {
-      this.clear();
       return { position: fallback, snapped: false };
     }
 
-    this.entityFactory.showSnapIndicator(target.position);
+    const snapInfo = this.snapInfo(target, context);
     return {
       position: cloneCartesian(target.position),
       snapped: true,
-      target
+      target,
+      snapInfo
     };
   }
 
   clear(): void {
-    this.entityFactory.hideSnapIndicator();
+    // SnapService is intentionally pure calculation; kept as a no-op for callers
+    // that only need to clear snap state.
   }
 
   destroy(): void {
@@ -140,12 +154,12 @@ export class SnapService {
     let bestPriority = Number.POSITIVE_INFINITY;
 
     for (const candidate of this.iterCandidates(context)) {
-      const evaluated = this.evaluateCandidate(candidate, screenPosition);
+      const evaluated = this.evaluateCandidate(candidate, screenPosition, maxDistance);
       if (!evaluated || evaluated.distance > maxDistance) {
         continue;
       }
 
-      const priority = evaluated.type === 'vertex' ? 0 : 1;
+      const priority = this.targetPriority(evaluated);
       if (
         !best ||
         evaluated.distance < best.distance - 0.5 ||
@@ -160,12 +174,16 @@ export class SnapService {
   }
 
   private *iterCandidates(context: SnapContext): Iterable<Candidate> {
-    if (context.workingPositions?.length) {
-      yield* this.workingCandidates(context.workingPositions);
+    if (context.selfSnapPositions?.length) {
+      yield* this.selfCandidates(context.selfSnapPositions);
+    }
+
+    if (context.allowSelfSnapOnly) {
+      return;
     }
 
     for (const candidate of this.annotationCandidateCache()) {
-      if (candidate.annotation?.id === context.annotationId) {
+      if (candidate.annotation?.id === context.excludeAnnotationId) {
         continue;
       }
       yield candidate;
@@ -173,12 +191,12 @@ export class SnapService {
   }
 
   private annotationCandidateCache(): Candidate[] {
-    const annotations = this.store.getAll();
-    const signature = this.annotationCandidateSignature(annotations);
+    const signature = this.annotationCandidateSignature();
     if (signature === this.candidateCache.signature) {
       return this.candidateCache.candidates;
     }
 
+    const annotations = this.store.getAll();
     const candidates: Candidate[] = [];
     for (const annotation of annotations) {
       if (annotation.properties?.snapIgnore === true || !isAnnotationExplicitlyVisible(annotation)) {
@@ -192,51 +210,46 @@ export class SnapService {
     return candidates;
   }
 
-  private annotationCandidateSignature(annotations: Annotation[]): string {
+  private annotationCandidateSignature(): string {
     const snapOptions = `${this.options.snapping.snapVertex}:${this.options.snapping.snapSegment}`;
-    const parts = annotations.map((annotation) => {
-      const show = isAnnotationExplicitlyVisible(annotation);
-      const ignored = annotation.properties?.snapIgnore === true;
-      return `${annotation.id}:${annotation.type}:${annotation.updatedAt}:${show}:${ignored}:${annotationVertexCount(annotation)}`;
-    });
-    return `${snapOptions}|${parts.join('|')}`;
+    // 用 store 修订号代替遍历全量标注拼接字符串，避免每次鼠标移动的 O(n) 开销。
+    // 新增 / 更新 / touch / 删除 / 清空都会改变修订号；外部直接改 entity.show
+    // 等绕过 store 的变更需调用 store.bumpRevision() 使其失效。
+    return `${snapOptions}|${this.store.getRevision()}`;
   }
 
-  private *workingCandidates(positions: Cartesian3[]): Iterable<Candidate> {
-    if (this.options.snapping.snapVertex) {
-      for (let index = 0; index < positions.length; index += 1) {
-        yield {
-          key: `working:vertex:${index}`,
-          type: 'vertex',
-          position: positions[index],
-          vertexIndex: index
-        };
-      }
-    }
-
-    if (!this.options.snapping.snapSegment) {
+  private *selfCandidates(positions: Cartesian3[]): Iterable<Candidate> {
+    if (!this.options.snapping.snapVertex) {
       return;
     }
 
-    for (let index = 0; index < positions.length - 1; index += 1) {
+    for (let index = 0; index < positions.length; index += 1) {
       yield {
-        key: `working:segment:${index}`,
-        type: 'segment',
-        from: positions[index],
-        to: positions[index + 1]
+        key: `self:vertex:${index}:${cartesianSignature(positions[index])}`,
+        type: 'vertex',
+        source: 'self',
+        position: positions[index],
+        vertexIndex: index
       };
     }
   }
 
   private *annotationCandidates(annotation: Annotation): Iterable<Candidate> {
+    if (annotation.type === 'circle') {
+      yield* this.circleCandidates(annotation);
+      return;
+    }
+
     const vertices = annotationVertices(annotation);
     if (this.options.snapping.snapVertex) {
       for (let index = 0; index < vertices.length; index += 1) {
         yield {
           key: `${annotation.id}:vertex:${index}`,
           type: 'vertex',
+          source: 'annotation',
           position: vertices[index],
           annotation,
+          annotationType: annotation.type,
           vertexIndex: index
         };
       }
@@ -251,29 +264,76 @@ export class SnapService {
       yield {
         key: `${annotation.id}:segment:${index}`,
         type: 'segment',
+        source: 'annotation',
         from: vertices[index],
         to: vertices[(index + 1) % vertices.length],
-        annotation
+        annotation,
+        annotationType: annotation.type,
+        fromVertexIndex: index,
+        toVertexIndex: (index + 1) % vertices.length
       };
     }
   }
 
-  private evaluateCandidate(candidate: Candidate, screenPosition: Cartesian2): SnapTarget | undefined {
+  private *circleCandidates(annotation: Extract<Annotation, { type: 'circle' }>): Iterable<Candidate> {
+    if (this.options.snapping.snapVertex) {
+      yield {
+        key: `${annotation.id}:vertex:center`,
+        type: 'vertex',
+        source: 'annotation',
+        position: annotation.center,
+        annotation,
+        annotationType: annotation.type
+      };
+    }
+
+    if (!this.options.snapping.snapSegment && !this.options.snapping.snapVertex) {
+      return;
+    }
+
+    const boundary = circleOutlinePositions(annotation.center, annotation.radius, CIRCLE_SNAP_SEGMENTS);
+    const boundaryVertexCount = Math.max(0, boundary.length - 1);
+    if (this.options.snapping.snapVertex) {
+      for (let index = 0; index < boundaryVertexCount; index += 1) {
+        yield {
+          key: `${annotation.id}:circle-boundary-vertex:${index}`,
+          type: 'vertex',
+          source: 'annotation',
+          position: boundary[index],
+          annotation,
+          annotationType: annotation.type,
+          vertexIndex: index
+        };
+      }
+    }
+
+    if (!this.options.snapping.snapSegment || boundaryVertexCount < 2) {
+      return;
+    }
+
+    for (let index = 0; index < boundaryVertexCount; index += 1) {
+      yield {
+        key: `${annotation.id}:circle-boundary-segment:${index}`,
+        type: 'segment',
+        source: 'annotation',
+        from: boundary[index],
+        to: boundary[(index + 1) % boundaryVertexCount],
+        annotation,
+        annotationType: annotation.type,
+        fromVertexIndex: index,
+        toVertexIndex: (index + 1) % boundaryVertexCount
+      };
+    }
+  }
+
+  private evaluateCandidate(candidate: Candidate, screenPosition: Cartesian2, maxDistance: number): SnapTarget | undefined {
     if (candidate.type === 'vertex') {
       const candidateScreen = this.worldToScreen(candidate.position, candidate.key);
       if (!candidateScreen) {
         return undefined;
       }
 
-      return {
-        key: candidate.key,
-        type: 'vertex',
-        position: cloneCartesian(candidate.position),
-        distance: Cartesian2.distance(screenPosition, candidateScreen),
-        annotation: candidate.annotation,
-        layer: candidate.annotation?.entity,
-        vertexIndex: candidate.vertexIndex
-      };
+      return this.vertexTarget(candidate, candidate.position, Cartesian2.distance(screenPosition, candidateScreen), candidate.vertexIndex);
     }
 
     const fromScreen = this.worldToScreen(candidate.from, `${candidate.key}:from`);
@@ -282,17 +342,71 @@ export class SnapService {
       return undefined;
     }
 
+    if (this.options.snapping.snapVertex) {
+      const fromDistance = Cartesian2.distance(screenPosition, fromScreen);
+      const toDistance = Cartesian2.distance(screenPosition, toScreen);
+      const useFrom = fromDistance <= toDistance;
+      const endpointDistance = useFrom ? fromDistance : toDistance;
+      if (endpointDistance <= maxDistance) {
+        return this.vertexTarget(
+          candidate,
+          useFrom ? candidate.from : candidate.to,
+          endpointDistance,
+          useFrom ? candidate.fromVertexIndex : candidate.toVertexIndex,
+          `${candidate.key}:endpoint:${useFrom ? 'from' : 'to'}`
+        );
+      }
+    }
+
     const t = closestSegmentRatio(screenPosition, fromScreen, toScreen);
     const nearestScreen = Cartesian2.lerp(fromScreen, toScreen, t, new Cartesian2());
     const position = interpolateSurface(candidate.from, candidate.to, t);
     return {
       key: candidate.key,
       type: 'segment',
+      source: candidate.source,
       position,
       distance: Cartesian2.distance(screenPosition, nearestScreen),
       annotation: candidate.annotation,
+      annotationType: candidate.annotationType,
       layer: candidate.annotation?.entity,
       segment: [cloneCartesian(candidate.from), cloneCartesian(candidate.to)]
+    };
+  }
+
+  private vertexTarget(
+    candidate: Candidate,
+    position: Cartesian3,
+    distance: number,
+    vertexIndex?: number,
+    key = candidate.key
+  ): SnapTarget {
+    return {
+      key,
+      type: 'vertex',
+      source: candidate.source,
+      position: cloneCartesian(position),
+      distance,
+      annotation: candidate.annotation,
+      annotationType: candidate.annotationType,
+      layer: candidate.annotation?.entity,
+      vertexIndex
+    };
+  }
+
+  private targetPriority(target: SnapTarget): number {
+    const shapePriority = target.source === 'self' ? -1 : annotationTypePriority(target.annotationType);
+    const snapTypePriority = target.type === 'vertex' ? 0 : 1;
+    return shapePriority * 10 + snapTypePriority;
+  }
+
+  private snapInfo(target: SnapTarget, context: SnapContext): SnapInfo {
+    return {
+      mode: context.mode,
+      shape: context.shape,
+      source: target.source,
+      annotationType: target.annotationType,
+      priority: this.targetPriority(target)
     };
   }
 
@@ -413,8 +527,21 @@ function annotationVertices(annotation: Annotation): Cartesian3[] {
   }
 }
 
-function annotationVertexCount(annotation: Annotation): number {
-  return annotationVertices(annotation).length;
+const CIRCLE_SNAP_SEGMENTS = 128;
+
+function annotationTypePriority(type: AnnotationType | undefined): number {
+  switch (type) {
+    case 'point':
+      return 0;
+    case 'circle':
+      return 1;
+    case 'polyline':
+      return 2;
+    case 'polygon':
+      return 3;
+    default:
+      return Number.POSITIVE_INFINITY;
+  }
 }
 
 function cartesianSignature(position: Cartesian3 | undefined): string {

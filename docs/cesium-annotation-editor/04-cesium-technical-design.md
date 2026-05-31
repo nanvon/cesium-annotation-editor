@@ -31,7 +31,7 @@ CesiumAnnotationEditor
 - `AnnotationStore` 是业务真相源。
 - Cesium `Entity` 是渲染对象，不是唯一数据模型。
 - helper entities 独立管理，不参与导出。
-- snap indicator 独立管理，不参与导出和 picking。
+- snapping 只计算吸附结果；命中后由 draw/edit controller 移动当前 cursor marker、hint line 终点或 handle。
 - 所有 `ScreenSpaceEventHandler` action 必须由 mode controller 注册和注销。
 - `destroy()` 必须可重复调用且无副作用。
 
@@ -173,9 +173,9 @@ pickWorldPosition(screenPosition: Cartesian2): Cartesian3 | undefined
 
 Snapping 基于屏幕像素距离，而不是世界距离：
 
-1. 将已有 annotation 的顶点和线段端点通过 `SceneTransforms.worldToWindowCoordinates` 投影到屏幕。
-2. 在 `snapDistance` 范围内找最近候选，顶点优先于线段。
-3. 线段命中时先在屏幕线段上求最近点比例，再插值回 `Cartesian3`。
+1. 将候选顶点和线段端点通过 `SceneTransforms.worldToWindowCoordinates` 投影到屏幕。
+2. 在 `snapDistance` 范围内找最近候选；同距离附近按 Marker / Circle / Line / Polygon 的默认顺序稳定排序。
+3. 线段命中时先在屏幕线段上求最近点比例，再插值回 `Cartesian3`；如果 `snapVertex` 开启且线段端点也在 `snapDistance` 内，则端点优先。
 4. draw/edit controller 使用吸附后的 `Cartesian3` 更新 working geometry 或 edit preview。
 
 候选来源：
@@ -183,13 +183,14 @@ Snapping 基于屏幕像素距离，而不是世界距离：
 - point position。
 - polyline / polygon vertices。
 - polyline / polygon segments，polygon 包含闭合边。
-- circle center。圆周吸附暂不实现，避免把椭圆边界采样误认为真实业务顶点。
-- draw mode 当前 working vertices，用于吸附到已确认顶点并支持接近首尾点完成。
+- circle center 和采样圆周边界，等价于 Geoman 内部隐藏边界 polygon 候选。
+- draw mode 不把当前 working vertices 全量作为普通候选；polygon 仅在已有 3 个顶点后把首点作为 self-snap 候选用于闭合。
 
 排除规则：
 
 - `properties.snapIgnore === true` 的 annotation 不参与吸附。
 - edit mode 拖动某个 annotation 的 handle 时，不吸附到同一个 annotation。
+- 当前正在绘制/编辑的临时 entity 不参与普通 snap。
 - 按住 Alt 时临时关闭吸附。
 
 ## Annotation picking

@@ -341,7 +341,6 @@ Given 地图上已有 point annotation
 And 当前 mode 为 `draw:polyline`  
 When 用户在 `snapDistance` 内点击该 point 附近  
 Then 新增 vertex 使用该 point 的 position  
-And 显示 snap indicator  
 And 触发 `pm:snapdrag` 和 `pm:snap`
 
 ### T651 draw vertex snaps to existing segment
@@ -363,7 +362,6 @@ And 触发 `pm:snapdrag`、`pm:snap`、`pm:markerdrag`
 Given 当前启用 snapping  
 When 用户按住 Alt 并拖动或绘制到已有顶点附近  
 Then 不吸附  
-And 不显示 snap indicator
 
 ### T654 snap ignore
 
@@ -371,17 +369,65 @@ Given 地图上已有 annotation 且 `properties.snapIgnore === true`
 When 用户绘制或编辑到该 annotation 附近  
 Then 该 annotation 不作为吸附候选
 
-### T655 snap ignores clearly invisible candidates
+### T655 draw snap moves current marker or hint directly
+
+Given 地图上已有 point annotation
+And 当前 mode 为 `draw:point` 或 `draw:polygon`
+When 鼠标移动到该 point 的 `snapDistance` 内
+Then point cursor marker 或 polygon hint line 终点直接移动到该 point position
+And 不创建额外 snap entity
+
+### T656 polyline does not self-snap to working vertices
+
+Given 当前 mode 为 `draw:polyline`
+And 已经放置至少 1 个 working vertex
+When 鼠标移动回第一个 working vertex 附近
+Then snapping 不命中该 working vertex
+And 下一次点击不会因为 self-snap 闭合 polyline
+
+### T657 polygon only self-snaps to first vertex for close
+
+Given 当前 mode 为 `draw:polygon`
+And 已经放置 working vertices
+When 鼠标移动到非首个 working vertex 附近
+Then snapping 不命中该 working vertex
+When 已有顶点数小于 3 且鼠标移动到首点附近
+Then 不通过 self-snap 完成 polygon
+When 已有顶点数大于等于 3 且鼠标移动到首点附近并点击
+Then polygon 完成
+
+### T658 segment snap prefers endpoint inside snapDistance
+
+Given 地图上已有 polyline annotation
+And `snapVertex` 与 `snapSegment` 都开启
+When 鼠标命中 segment 且最近端点也在 `snapDistance` 内
+Then snapping 结果为该端点 vertex
+And `snapTargetType` 为 `vertex`
+
+### T659 edit snap excludes itself
+
+Given edit mode 下正在拖动某个 annotation 的 handle
+When 鼠标移动到该 annotation 自身顶点或线段附近
+Then snapping 不命中该 annotation 自身
+And 若附近有其他 annotation 候选，则可吸附到其他 annotation
+
+### T660 circle boundary can be snapped
+
+Given 地图上已有 circle annotation
+When 用户绘制或编辑到该 circle 圆周边界附近
+Then snapping 可命中 circle 的采样边界候选
+
+### T661 snap ignores clearly invisible candidates
 
 Given 地图上已有隐藏 annotation、相机背面 annotation、地球背面 annotation 和 viewport 外 annotation
 When 用户在这些候选屏幕位置附近绘制或编辑
 Then Snap 不吸附到这些候选
 And 不对明确隐藏、相机背面或地球背面候选执行窗口坐标投影
 
-### T656 snap caches projected annotation candidates
+### T662 snap caches projected annotation candidates
 
 Given 地图上已有多个 annotation 顶点
-And 相机、viewport、annotation `updatedAt` 和 snap 配置都没有变化
+And 相机、viewport、store revision 和 snap 配置都没有变化
 When 连续两次调用 Snap resolve
 Then 第二次不应无条件重新投影全部 annotation 顶点/线段
 And 仍能返回正确最近候选

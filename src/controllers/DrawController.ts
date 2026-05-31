@@ -509,24 +509,27 @@ export class DrawController {
     }
 
     const resolution = this.snapService.resolve(screenPosition, fallbackPosition, {
-      workingLayer: this.state.workingEntity,
-      workingPositions: this.state.type === 'circle' && this.state.center ? [this.state.center] : this.state.positions
+      mode: 'draw',
+      shape: this.state.type,
+      selfSnapPositions: this.drawSelfSnapPositions()
     });
     this.updateSnapState(resolution);
     return resolution;
   }
 
+  private drawSelfSnapPositions(): Cartesian3[] | undefined {
+    if (!this.state || this.state.type !== 'polygon' || this.state.positions.length < 3) {
+      return undefined;
+    }
+    return [this.state.positions[0]];
+  }
+
   private handleSnappedWorkingVertexClick(resolution: SnapResolution): boolean {
-    if (!this.state || !resolution.target?.key.startsWith('working:vertex:')) {
+    if (!this.state || resolution.target?.source !== 'self') {
       return false;
     }
 
     const vertexIndex = resolution.target.vertexIndex;
-    const lastIndex = this.state.positions.length - 1;
-    if (this.state.type === 'polyline' && vertexIndex === lastIndex && this.state.positions.length >= 2) {
-      this.finish();
-      return true;
-    }
     if (this.state.type === 'polygon' && vertexIndex === 0 && this.state.positions.length >= 3) {
       this.finish();
       return true;
@@ -573,7 +576,6 @@ export class DrawController {
   private clearSnapState(): void {
     this.activeSnapEvent = null;
     this.activeSnapKey = null;
-    this.snapService.clear();
   }
 
   private queueMouseMove(screenPosition: Cartesian2): void {

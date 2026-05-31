@@ -1,9 +1,12 @@
 import {
   Cartesian2,
   Cartesian3,
-  Entity,
+  Ellipsoid,
+  SceneTransforms,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
+  Entity,
+  type Scene,
   type Viewer
 } from 'cesium';
 import type { Annotation, EntityMetadata, GeomanSnapEvent } from '../types';
@@ -47,6 +50,7 @@ export class EditController {
   private hoverFrame: AnimationFrameHandle | null = null;
   private activeSnapEvent: GeomanSnapEvent | null = null;
   private activeSnapKey: string | null = null;
+  private removeCameraListener: (() => void) | null = null;
 
   constructor(
     private readonly viewer: Viewer,
@@ -66,13 +70,15 @@ export class EditController {
     this.handler.setInputAction((movement: { position: Cartesian2 }) => this.handleLeftDown(movement.position), ScreenSpaceEventType.LEFT_DOWN);
     this.handler.setInputAction((movement: { endPosition: Cartesian2 }) => this.handleMouseMove(movement.endPosition), ScreenSpaceEventType.MOUSE_MOVE);
     this.handler.setInputAction(() => this.finishDrag(), ScreenSpaceEventType.LEFT_UP);
-    this.renderAllHandles();
+    this.subscribeCameraChange();
+    this.renderViewportHandles();
   }
 
   deactivate(clearSelection = true): void {
     this.finishDrag();
     this.cancelDragFrame();
     this.cancelHoverFrame();
+    this.unsubscribeCameraChange();
     this.handler?.destroy();
     this.handler = null;
     this.viewer.scene.canvas.classList.remove('cae-edit-cursor');
@@ -114,7 +120,7 @@ export class EditController {
 
   refreshHandles(): void {
     if (this.isActive()) {
-      this.renderAllHandles();
+      this.renderViewportHandles();
       return;
     }
 
@@ -335,11 +341,98 @@ export class EditController {
     this.renderHandles(annotation);
   }
 
-  private renderAllHandles(): void {
+  /**
+   * 全局编辑模式下，所有图形仍同时可编辑（Geoman 语义），但只为当前视口内的标注创建
+   * handle entity，避免 handle 数量随标注总量线性增长。视口外的图形本就无法交互。
+   * 相机停止移动时（moveEnd）重建可见 handle。无法判断视口（如测试环境、缺少相机 API）
+   * 时回退为全量渲染，保持原有行为。
+   */
+  private renderViewportHandles(): void {
     this.entityFactory.removeHelperEntities();
     this.handleEntities.clear();
     for (const annotation of this.store.getAll()) {
-      this.renderHandles(annotation);
+      if (annotation.id === this.selectedId || this.isAnnotationInViewport(annotation)) {
+        this.renderHandles(annotation);
+      }
+    }
+  }
+
+  private subscribeCameraChange(): void {
+    this.unsubscribeCameraChange();
+    const moveEnd = this.viewer.scene.camera?.moveEnd;
+    if (!moveEnd || typeof moveEnd.addEventListener !== 'function') {
+      return;
+    }
+
+    const remove = moveEnd.addEventListener(() => {
+      // 拖动期间相机被锁定且不应重建 handle（会销毁正在拖动的 handle 及其预览源）。
+      if (this.dragTarget || !this.isActive()) {
+        return;
+      }
+      this.renderViewportHandles();
+      this.viewer.scene.requestRender();
+    });
+    this.removeCameraListener = typeof remove === 'function' ? remove : null;
+  }
+
+  private unsubscribeCameraChange(): void {
+    this.removeCameraListener?.();
+    this.removeCameraListener = null;
+  }
+
+  private isAnnotationInViewport(annotation: Annotation): boolean {
+    const scene = this.viewer.scene as Scene | undefined;
+    const camera = scene?.camera;
+    // 视口/相机信息不可用时（测试环境等）回退为"可见"，保持原全量行为。
+    if (!scene || !camera?.positionWC || !camera?.directionWC) {
+      return true;
+    }
+    return this.handleAnchorPositions(annotation).some((position) => this.isPositionInViewport(position));
+  }
+
+  private isPositionInViewport(position: Cartesian3): boolean {
+    const scene = this.viewer.scene as Scene;
+    const camera = scene.camera;
+    const cameraPosition = camera.positionWC;
+    const cameraDirection = camera.directionWC;
+
+    const toPosition = Cartesian3.subtract(position, cameraPosition, viewportScratch);
+    if (Cartesian3.dot(cameraDirection, toPosition) <= 0) {
+      return false;
+    }
+    if (!isAboveGlobeHorizon(position, cameraPosition, scene)) {
+      return false;
+    }
+
+    let screen: Cartesian2 | undefined;
+    try {
+      screen = SceneTransforms.worldToWindowCoordinates(scene, position, new Cartesian2());
+    } catch {
+      return true;
+    }
+    if (!screen) {
+      return false;
+    }
+
+    const width = scene.drawingBufferWidth ?? scene.canvas?.clientWidth ?? scene.canvas?.width;
+    const height = scene.drawingBufferHeight ?? scene.canvas?.clientHeight ?? scene.canvas?.height;
+    if (typeof width !== 'number' || typeof height !== 'number' || width <= 0 || height <= 0) {
+      return true;
+    }
+
+    const margin = HANDLE_VIEWPORT_MARGIN;
+    return screen.x >= -margin && screen.y >= -margin && screen.x <= width + margin && screen.y <= height + margin;
+  }
+
+  private handleAnchorPositions(annotation: Annotation): Cartesian3[] {
+    switch (annotation.type) {
+      case 'point':
+        return [annotation.position];
+      case 'polyline':
+      case 'polygon':
+        return annotation.positions;
+      case 'circle':
+        return [annotation.center, this.entityFactory.getCircleRadiusHandlePosition(annotation)];
     }
   }
 
@@ -476,8 +569,9 @@ export class EditController {
     }
 
     const resolution = this.snapService.resolve(screenPosition, fallbackPosition, {
-      annotationId: this.dragTarget.annotation.id,
-      marker: this.dragTarget.handleEntity
+      mode: 'edit',
+      shape: this.dragTarget.annotation.type,
+      excludeAnnotationId: this.dragTarget.annotation.id
     });
     this.updateSnapState(resolution);
     return resolution.position;
@@ -524,12 +618,28 @@ export class EditController {
   private clearSnapState(): void {
     this.activeSnapEvent = null;
     this.activeSnapKey = null;
-    this.snapService.clear();
   }
 
   private isActive(): boolean {
     return this.handler !== null;
   }
+}
+
+const HANDLE_VIEWPORT_MARGIN = 32;
+const viewportScratch = new Cartesian3();
+
+function isAboveGlobeHorizon(position: Cartesian3, cameraPosition: Cartesian3, scene: Scene): boolean {
+  const ellipsoid = scene.globe?.ellipsoid ?? Ellipsoid.WGS84;
+  const radius = ellipsoid.maximumRadius;
+  const cameraDistance = Cartesian3.magnitude(cameraPosition);
+  const positionDistance = Cartesian3.magnitude(position);
+  if (cameraDistance <= radius || positionDistance === 0) {
+    return true;
+  }
+
+  const cosine = Cartesian3.dot(cameraPosition, position) / (cameraDistance * positionDistance);
+  const horizonCosine = radius / cameraDistance;
+  return cosine >= horizonCosine - 1e-6;
 }
 
 function getDraggedCircleRadiusHandlePosition(annotation: Extract<Annotation, { type: 'circle' }>, position: Cartesian3): Cartesian3 {
