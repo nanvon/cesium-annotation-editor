@@ -1,5 +1,11 @@
 # Cesium Annotation Editor
 
+[![npm version](https://img.shields.io/npm/v/cesium-annotation-editor.svg)](https://www.npmjs.com/package/cesium-annotation-editor)
+[![npm downloads](https://img.shields.io/npm/dm/cesium-annotation-editor.svg)](https://www.npmjs.com/package/cesium-annotation-editor)
+[![license](https://img.shields.io/npm/l/cesium-annotation-editor.svg)](./LICENSE)
+
+> npm: <https://www.npmjs.com/package/cesium-annotation-editor> · GitHub: <https://github.com/nanvon/cesium-annotation-editor>
+
 Cesium Annotation Editor 是一个轻量的 TypeScript Cesium 标注插件，提供点、线、圆、多边形的绘制、编辑、整体拖拽、吸附和序列化能力。插件使用 Cesium Entity API 渲染，同时维护自己的 annotation model，业务代码不需要直接处理 Cesium 低层鼠标事件。
 
 ## 功能
@@ -376,3 +382,13 @@ npm run demo
 - Module: ESM first，同时提供 CJS 入口
 - Language: TypeScript
 - Browser: Chrome / Edge / Safari 近两个主版本
+
+## 仓库
+
+- npm: <https://www.npmjs.com/package/cesium-annotation-editor>
+- GitHub: <https://github.com/nanvon/cesium-annotation-editor>
+- Issues: <https://github.com/nanvon/cesium-annotation-editor/issues>
+
+## License
+
+[MIT](./LICENSE) © nanvon

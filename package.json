@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "A TypeScript Cesium annotation drawing and editing plugin.",
   "type": "module",
+  "author": "nanvon <nanvon@foxmail.com>",
+  "homepage": "https://github.com/nanvon/cesium-annotation-editor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nanvon/cesium-annotation-editor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nanvon/cesium-annotation-editor/issues"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
