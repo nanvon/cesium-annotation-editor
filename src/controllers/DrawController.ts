@@ -197,7 +197,7 @@ export class DrawController {
     this.clearLineLikeHover();
     this.rebuildVertexHelpers();
     this.updateLineLikeWorkingGeometry();
-    this.resetPolygonHintLineToLastVertex();
+    this.resetHintLineToLastVertex();
     return true;
   }
 
@@ -249,9 +249,7 @@ export class DrawController {
       this.updateLineLikeHover(screenPosition);
       const world = this.pickService.pickGlobePosition(screenPosition) ?? this.pickService.pickWorldPosition(screenPosition);
       const snapped = this.resolveDrawPosition(screenPosition, world);
-      if (this.state.type === 'polygon') {
-        this.updatePolygonHintLine(snapped);
-      }
+      this.updateHintLine(snapped);
       return;
     }
 
@@ -301,7 +299,7 @@ export class DrawController {
     this.state.vertexHelpers.push(helper);
     this.state.hasGeometry = true;
     this.updateLineLikeWorkingGeometry();
-    this.resetPolygonHintLineToLastVertex();
+    this.resetHintLineToLastVertex();
     this.events.emit('pm:vertexadded', {
       shape: annotationTypeToGeomanShape(this.state.type),
       workingLayer: this.state.workingEntity,
@@ -355,41 +353,41 @@ export class DrawController {
     }
   }
 
-  private updatePolygonHintLine(world: Cartesian3 | undefined): void {
-    if (!this.state || this.state.type !== 'polygon') {
+  private updateHintLine(world: Cartesian3 | undefined): void {
+    if (!this.state || (this.state.type !== 'polyline' && this.state.type !== 'polygon')) {
       return;
     }
 
     const lastVertex = this.state.positions[this.state.positions.length - 1];
     if (!lastVertex) {
-      this.clearPolygonHintLine();
+      this.clearHintLine();
       return;
     }
 
     if (!world) {
-      this.clearPolygonHintLine();
+      this.clearHintLine();
       return;
     }
 
-    this.setPolygonHintLine([lastVertex, world]);
+    this.setHintLine([lastVertex, world]);
   }
 
-  private resetPolygonHintLineToLastVertex(): void {
-    if (!this.state || this.state.type !== 'polygon') {
+  private resetHintLineToLastVertex(): void {
+    if (!this.state || (this.state.type !== 'polyline' && this.state.type !== 'polygon')) {
       return;
     }
 
     const lastVertex = this.state.positions[this.state.positions.length - 1];
     if (!lastVertex) {
-      this.clearPolygonHintLine();
+      this.clearHintLine();
       return;
     }
 
-    this.setPolygonHintLine([lastVertex, lastVertex]);
+    this.setHintLine([lastVertex, lastVertex]);
   }
 
-  private setPolygonHintLine(positions: Cartesian3[]): void {
-    if (!this.state || this.state.type !== 'polygon') {
+  private setHintLine(positions: Cartesian3[]): void {
+    if (!this.state || (this.state.type !== 'polyline' && this.state.type !== 'polygon')) {
       return;
     }
 
@@ -403,7 +401,7 @@ export class DrawController {
     this.viewer.scene.requestRender();
   }
 
-  private clearPolygonHintLine(): void {
+  private clearHintLine(): void {
     if (!this.state?.hintLine) {
       return;
     }
