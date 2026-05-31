@@ -17,13 +17,19 @@ import {
   getSupportedGeomanShapes
 } from './geoman';
 import { normalizeOptions } from './options';
-import { fromJSONInput, toJSON as serializeAnnotations } from './serialization/Serializer';
+import {
+  fromGeoJSON as geoJSONToAnnotationInputs,
+  fromJSONInput,
+  toGeoJSON as serializeGeoJSON,
+  toJSON as serializeAnnotations
+} from './serialization/Serializer';
 import { Toolbar } from './toolbar/Toolbar';
 import { getBrowserDocument, getElementComputedStyle } from './utils/browser';
 import { hasSelfIntersection } from './utils/selfIntersection';
 import type {
   AddEvent,
   Annotation,
+  AnnotationGeoJSONFeatureCollection,
   AnnotationInput,
   AnnotationJSON,
   AnnotationPatch,
@@ -270,12 +276,24 @@ export class CesiumAnnotationEditor {
     return serializeAnnotations(this.store.getAll());
   }
 
+  toGeoJSON(): AnnotationGeoJSONFeatureCollection {
+    return serializeGeoJSON(this.store.getAll());
+  }
+
   fromJSON(items: AnnotationJSON[], options: { clear?: boolean } = {}): Annotation[] {
     this.assertUsable();
     if (options.clear) {
       this.clearAnnotations();
     }
     return items.map((item) => this.addAnnotation(fromJSONInput(item)));
+  }
+
+  fromGeoJSON(geoJSON: AnnotationGeoJSONFeatureCollection, options: { clear?: boolean } = {}): Annotation[] {
+    this.assertUsable();
+    if (options.clear) {
+      this.clearAnnotations();
+    }
+    return geoJSONToAnnotationInputs(geoJSON).map((input) => this.addAnnotation(input));
   }
 
   on<T extends EditorEventName>(name: T, handler: EditorEventHandler<T>): () => void {

@@ -268,18 +268,21 @@ type AnnotationJSON =
       id: string;
       type: 'point';
       position: LngLatHeight;
+      style?: AnnotationStyle;
       properties?: Record<string, unknown>;
     }
   | {
       id: string;
       type: 'polyline';
       positions: LngLatHeight[];
+      style?: AnnotationStyle;
       properties?: Record<string, unknown>;
     }
   | {
       id: string;
       type: 'polygon';
       positions: LngLatHeight[];
+      style?: AnnotationStyle;
       properties?: Record<string, unknown>;
     }
   | {
@@ -287,11 +290,49 @@ type AnnotationJSON =
       type: 'circle';
       center: LngLatHeight;
       radius: number;
+      style?: AnnotationStyle;
       properties?: Record<string, unknown>;
     };
 ```
 
-JSON 使用经纬度和可选高度。圆保持为 center + radius，不会导出成近似 polygon。
+JSON 使用经纬度和可选高度。`style` 和 `properties` 都会保留并深拷贝。圆保持为 center + radius，不会导出成近似 polygon。
+
+## GeoJSON Model
+
+```ts
+interface AnnotationGeoJSONFeatureCollection {
+  type: 'FeatureCollection';
+  features: AnnotationGeoJSONFeature[];
+}
+
+interface AnnotationGeoJSONFeature {
+  type: 'Feature';
+  id?: string | number;
+  geometry:
+    | { type: 'Point'; coordinates: LngLatHeight }
+    | { type: 'LineString'; coordinates: LngLatHeight[] }
+    | { type: 'Polygon'; coordinates: LngLatHeight[][] };
+  properties: AnnotationGeoJSONProperties | null;
+}
+
+interface AnnotationGeoJSONProperties extends Record<string, unknown> {
+  cesiumAnnotationEditor?: {
+    type: AnnotationType;
+    radius?: number;
+    style?: AnnotationStyle;
+    properties?: Record<string, unknown>;
+  };
+}
+```
+
+GeoJSON 导出返回标准 `FeatureCollection`。插件元数据放在 `feature.properties.cesiumAnnotationEditor` 下：
+
+- `type` 用于恢复 annotation 类型，尤其是 circle。
+- `radius` 仅用于 circle。
+- `style` 保留 annotation style。
+- `properties` 保留业务 properties，避免和 GeoJSON properties 顶层用户字段发生冲突。
+
+导入没有 `cesiumAnnotationEditor` 元数据的普通 GeoJSON 时，会按 geometry 推断：`Point` -> point、`LineString` -> polyline、`Polygon` -> polygon，并把顶层 `feature.properties` 当作业务 properties。
 
 ## Native API
 
@@ -366,13 +407,20 @@ clearAnnotations(): void;
 ```ts
 toJSON(): AnnotationJSON[];
 fromJSON(items: AnnotationJSON[], options?: { clear?: boolean }): Annotation[];
+toGeoJSON(): AnnotationGeoJSONFeatureCollection;
+fromGeoJSON(geoJSON: AnnotationGeoJSONFeatureCollection, options?: { clear?: boolean }): Annotation[];
 ```
 
 - `toJSON()` 把 Cesium `Cartesian3` 转成 `[longitude, latitude, height?]`。
 - `toJSON()` 返回的 `properties` 是深拷贝；修改导出的嵌套对象不会反向修改 editor 内部 annotation。
+- `toJSON()` 返回的 `style` 是深拷贝；修改导出对象不会反向修改 editor 内部 annotation。
 - `fromJSON(items, { clear: true })` 会先执行 `clearAnnotations()`，再逐个 `addAnnotation()`。
 - `fromJSON()` 创建的 annotation 的 `source` 是 `'api'`。
-- `fromJSON()` / `fromJSONInput()` 会深拷贝输入 JSON 的 `properties`；导入后的 annotation 不共享调用方传入的可变嵌套对象。
+- `fromJSON()` / `fromJSONInput()` 会深拷贝输入 JSON 的 `style` 和 `properties`；导入后的 annotation 不共享调用方传入的可变对象。
+- `toGeoJSON()` 把 point/polyline/polygon/circle 导出为 `FeatureCollection`。circle 使用 `Point` geometry，并在 `properties.cesiumAnnotationEditor` 中保留 `type: 'circle'` 和 `radius`。
+- `toGeoJSON()` 导出 polygon 时会闭合外环；editor 内部 annotation `positions` 不保存重复首点。
+- `fromGeoJSON()` 导入 polygon 时会去掉外环末尾重复闭合点；导入 circle 时依赖 `properties.cesiumAnnotationEditor.type === 'circle'` 和正数 `radius` 恢复为 circle。
+- `fromGeoJSON()` 创建的 annotation 的 `source` 是 `'api'`。
 
 ### Events
 

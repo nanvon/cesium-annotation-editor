@@ -8,7 +8,7 @@ import {
   WebMercatorTilingScheme
 } from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
-import { CesiumAnnotationEditor } from '../../src';
+import { CesiumAnnotationEditor, type AnnotationJSON } from '../../src';
 import '../../src/styles.css';
 import './style.css';
 
@@ -62,9 +62,11 @@ const editor = new CesiumAnnotationEditor(viewer, {
 
 const mode = document.querySelector<HTMLParagraphElement>('#mode');
 const count = document.querySelector<HTMLParagraphElement>('#count');
-const output = document.querySelector<HTMLPreElement>('#output');
+const output = document.querySelector<HTMLTextAreaElement>('#output');
 const exportButton = document.querySelector<HTMLButtonElement>('#export');
+const importButton = document.querySelector<HTMLButtonElement>('#import');
 const clearButton = document.querySelector<HTMLButtonElement>('#clear');
+const status = document.querySelector<HTMLParagraphElement>('#status');
 
 function refresh(): void {
   if (mode) {
@@ -81,16 +83,68 @@ editor.on('select', refresh);
 refresh();
 
 exportButton?.addEventListener('click', () => {
-  if (output) {
-    output.textContent = JSON.stringify(editor.toJSON(), null, 2);
+  setOutput(JSON.stringify(editor.toJSON(), null, 2));
+  setStatus(`Exported ${editor.getAnnotations().length} annotations.`);
+});
+
+importButton?.addEventListener('click', () => {
+  if (!output) {
+    return;
   }
+
+  try {
+    const items = parseAnnotationJSON(output.value);
+    editor.fromJSON(items, { clear: true });
+    refresh();
+    setOutput(JSON.stringify(editor.toJSON(), null, 2));
+    setStatus(`Imported ${items.length} annotations.`);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : 'Invalid JSON.', true);
+  }
+});
+
+output?.addEventListener('input', () => {
+  updateImportButton();
+  setStatus('');
 });
 
 clearButton?.addEventListener('click', () => {
   editor.clearAnnotations();
-  if (output) {
-    output.textContent = '';
-  }
+  setOutput('');
+  setStatus('');
 });
 
 Object.assign(window, { viewer, editor });
+
+function setOutput(value: string): void {
+  if (!output) {
+    return;
+  }
+  output.value = value;
+  updateImportButton();
+}
+
+function updateImportButton(): void {
+  if (!output || !importButton) {
+    return;
+  }
+  const hasInput = output.value.trim().length > 0;
+  importButton.disabled = !hasInput;
+  importButton.classList.toggle('is-visible', hasInput);
+}
+
+function parseAnnotationJSON(value: string): AnnotationJSON[] {
+  const parsed = JSON.parse(value) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error('JSON must be an annotation array.');
+  }
+  return parsed as AnnotationJSON[];
+}
+
+function setStatus(message: string, isError = false): void {
+  if (!status) {
+    return;
+  }
+  status.textContent = message;
+  status.classList.toggle('is-error', isError);
+}

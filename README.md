@@ -192,6 +192,7 @@ editor.fromJSON(
         [117.23, 31.82, 0],
         [117.23, 31.83, 0]
       ],
+      style: { fillColor: '#3388ff33', outlineColor: '#3388ff' },
       properties: { name: 'Area A' }
     }
   ],
@@ -199,7 +200,23 @@ editor.fromJSON(
 );
 ```
 
-圆会保留为 `{ center, radius }`，不会自动近似成 GeoJSON polygon。
+JSON 会保留 `style` 和 `properties`，导出和导入都会深拷贝这两个对象，避免业务侧和 editor 内部共享可变引用。圆会保留为 `{ center, radius }`，不会自动近似成 polygon。
+
+GeoJSON 导入导出使用标准 `FeatureCollection`：
+
+```ts
+const geojson = editor.toGeoJSON();
+editor.fromGeoJSON(geojson, { clear: true });
+```
+
+映射规则：
+
+- `point` -> `Feature<Point>`。
+- `polyline` -> `Feature<LineString>`。
+- `polygon` -> `Feature<Polygon>`，导出外环自动闭合，导入后内部 `positions` 不保留重复闭合点。
+- `circle` -> `Feature<Point>`，并在 `properties.cesiumAnnotationEditor` 中保留 `type: 'circle'` 和 `radius`，导入时恢复为 circle。
+
+GeoJSON 中插件元数据放在 `feature.properties.cesiumAnnotationEditor` 下，包含 annotation `type`、可选 `style`、circle `radius` 和原始业务 `properties`，避免与用户自定义字段混用。
 
 ## 事件
 

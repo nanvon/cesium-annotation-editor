@@ -60,15 +60,47 @@ body {
   cursor: pointer;
 }
 
+.demo-panel button:disabled {
+  cursor: default;
+  opacity: 0.52;
+}
+
+#import {
+  display: none;
+}
+
+#import.is-visible {
+  display: inline-block;
+}
+
 #output {
+  width: 100%;
   min-height: 120px;
   max-height: 360px;
   margin: 0;
   padding: 10px;
   overflow: auto;
   color: #c7d2fe;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
   line-height: 1.45;
   background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 6px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+#output:focus {
+  outline: 2px solid rgba(96, 165, 250, 0.72);
+  outline-offset: 1px;
+}
+
+.demo-panel__status {
+  min-height: 16px;
+  color: #bfdbfe;
+}
+
+.demo-panel__status.is-error {
+  color: #fecaca;
 }

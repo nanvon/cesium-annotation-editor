@@ -314,18 +314,21 @@ export type AnnotationJSON =
       id: string;
       type: 'point';
       position: LngLatHeight;
+      style?: AnnotationStyle;
       properties?: Record<string, unknown>;
     }
   | {
       id: string;
       type: 'polyline';
       positions: LngLatHeight[];
+      style?: AnnotationStyle;
       properties?: Record<string, unknown>;
     }
   | {
       id: string;
       type: 'polygon';
       positions: LngLatHeight[];
+      style?: AnnotationStyle;
       properties?: Record<string, unknown>;
     }
   | {
@@ -333,8 +336,46 @@ export type AnnotationJSON =
       type: 'circle';
       center: LngLatHeight;
       radius: number;
+      style?: AnnotationStyle;
       properties?: Record<string, unknown>;
     };
+
+export type AnnotationGeoJSONGeometry =
+  | {
+      type: 'Point';
+      coordinates: LngLatHeight;
+    }
+  | {
+      type: 'LineString';
+      coordinates: LngLatHeight[];
+    }
+  | {
+      type: 'Polygon';
+      coordinates: LngLatHeight[][];
+    };
+
+export interface AnnotationGeoJSONMetadata {
+  type: AnnotationType;
+  radius?: number;
+  style?: AnnotationStyle;
+  properties?: Record<string, unknown>;
+}
+
+export interface AnnotationGeoJSONProperties extends Record<string, unknown> {
+  cesiumAnnotationEditor?: AnnotationGeoJSONMetadata;
+}
+
+export interface AnnotationGeoJSONFeature {
+  type: 'Feature';
+  id?: string | number;
+  geometry: AnnotationGeoJSONGeometry;
+  properties: AnnotationGeoJSONProperties | null;
+}
+
+export interface AnnotationGeoJSONFeatureCollection {
+  type: 'FeatureCollection';
+  features: AnnotationGeoJSONFeature[];
+}
 
 export type CoreEditorEventName =
   | 'buttonclick'

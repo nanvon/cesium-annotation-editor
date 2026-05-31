@@ -13,9 +13,11 @@
       <p id="count">annotations: 0</p>
       <div class="demo-panel__buttons">
         <button id="export" type="button">Export JSON</button>
+        <button id="import" type="button" disabled>Import JSON</button>
         <button id="clear" type="button">Clear</button>
       </div>
-      <pre id="output"></pre>
+      <textarea id="output" spellcheck="false"></textarea>
+      <p id="status" class="demo-panel__status"></p>
     </aside>
     <script>
       var CESIUM_BASE_URL = '/cesium/';

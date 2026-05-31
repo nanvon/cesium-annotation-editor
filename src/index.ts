@@ -4,6 +4,11 @@ export { CesiumAnnotationEditor } from './CesiumAnnotationEditor';
 export type {
   AddEvent,
   Annotation,
+  AnnotationGeoJSONFeature,
+  AnnotationGeoJSONFeatureCollection,
+  AnnotationGeoJSONGeometry,
+  AnnotationGeoJSONMetadata,
+  AnnotationGeoJSONProperties,
   AnnotationInput,
   AnnotationJSON,
   AnnotationPatch,
