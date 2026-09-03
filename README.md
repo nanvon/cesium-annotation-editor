@@ -1,33 +1,59 @@
-# Cesium Annotation Editor
+<h1 align="center">Cesium Annotation Editor</h1>
 
-[![npm version](https://img.shields.io/npm/v/cesium-annotation-editor.svg)](https://www.npmjs.com/package/cesium-annotation-editor)
-[![npm downloads](https://img.shields.io/npm/dm/cesium-annotation-editor.svg)](https://www.npmjs.com/package/cesium-annotation-editor)
-[![license](https://img.shields.io/npm/l/cesium-annotation-editor.svg)](./LICENSE)
+<p align="center">
+  轻量、开箱即用的 TypeScript Cesium 标绘与几何编辑插件，提供响应式 Entity 渲染与 Leaflet-Geoman 风格 API。
+</p>
 
-> npm: <https://www.npmjs.com/package/cesium-annotation-editor> · GitHub: <https://github.com/nanvon/cesium-annotation-editor>
+<p align="center">
+  <a href="https://www.npmjs.com/package/cesium-annotation-editor"><img src="https://img.shields.io/npm/v/cesium-annotation-editor.svg?color=3388ff" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/cesium-annotation-editor"><img src="https://img.shields.io/npm/dm/cesium-annotation-editor.svg" alt="npm downloads"></a>
+  <a href="https://github.com/nanvon/cesium-annotation-editor"><img src="https://img.shields.io/badge/types-TypeScript-blue" alt="TypeScript"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange" alt="license"></a>
+</p>
 
-Cesium Annotation Editor 是一个轻量的 TypeScript Cesium 标注插件，提供点、线、圆、多边形的绘制、编辑、整体拖拽、吸附和序列化能力。插件使用 Cesium Entity API 渲染，同时维护自己的 annotation model，业务代码不需要直接处理 Cesium 低层鼠标事件。
+<p align="center">
+  <a href="./README_EN.md">English</a> · <b>简体中文</b>
+</p>
 
-## 功能
+---
 
-- 内置标注工具栏，支持绘制点、线、圆、多边形。
-- 支持顶点或控制点编辑：点位置、线/面顶点、圆心和半径。
-- 支持标注整体拖拽。
-- 支持绘制和编辑过程中的顶点/线段吸附，按住 `Alt` 可临时关闭吸附。
-- 支持原生 API、Leaflet-Geoman 风格的 `editor.pm` / `viewer.pm` API 和 `pm:*` 事件别名。
-- 支持添加、更新、删除、查询、清空和 JSON 序列化。
+## 🎯 概览
 
-当前不包含裁剪、旋转、缩放、删除模式、文字、矩形、复杂测绘工具、批量编辑和撤销重做。
+Cesium 官方未内置高层的交互式标绘与几何编辑组件，业务自研往往需要处理底层 `ScreenSpaceEventHandler` 状态机、动态顶点 Handle 维护、多边形实时闭合以及复杂的空间吸附计算。
 
-## 安装
+**Cesium Annotation Editor** 基于 Cesium Entity API 渲染并维护独立的响应式标注状态。它为点、折线、多边形、圆形提供完整的标绘交互、顶点微调、整件拖拽移动、实时吸附及标准序列化能力；同时提供对标 Leaflet-Geoman 的生态 API，帮助二维 WebGIS 开发者零迁移成本过渡至三维空间标绘场景。
+
+---
+
+## ✨ 核心特性
+
+- **多几何要素覆盖** — 支持点（Point）、折线（Polyline）、多边形（Polygon）和真圆（Circle，保留圆心与精确半径，非多边形离散模拟）的交互式绘制与动态渲染。
+- **顶点与整件编辑** — 细粒度控制点拖拽编辑（点位置、折线/面各顶点、圆心与半径控制点），支持标注整件拖拽平移（Cartographic 经纬度差值推算）。
+- **空间几何吸附 (Snapping)** — 绘制与编辑阶段实时吸附至已有标注顶点与线段骨架；圆形支持圆心与圆周采样点吸附；按住 `Alt` 键毫秒级临时脱附。
+- **双套 API 体系** — 兼顾现代化面向对象原生 API (`CesiumAnnotationEditor`) 与高度兼容 Leaflet-Geoman 的生态 API (`editor.pm` / `viewer.pm`)，支持无缝移植。
+- **标准双向数据流转** — 原生经纬度扁平 JSON (`toJSON` / `fromJSON`) 与开放标准 GeoJSON `FeatureCollection` (`toGeoJSON` / `fromGeoJSON`) 双向无损转换，圆要素通过扩展属性保真。
+- **大数据量渲染优化** — 视口可见性 Handle 增量裁剪、吸附候选视口索引缓存，深度适配 Cesium 的 `requestRenderMode: true` 按需渲染机制。
+
+> [!NOTE]
+> 本插件聚焦轻量通用的空间要素标绘与编辑。当前不包含文字注记、倾斜矩形、几何裁剪/布尔运算、测量算子以及撤销/重做栈。
+
+---
+
+## 📦 快速安装
 
 ```bash
 npm install cesium cesium-annotation-editor
 ```
 
-`cesium` 是 peer dependency。业务项目需要先按自己的构建方式配置好 Cesium 资源加载；Vite 项目通常可以使用 `vite-plugin-cesium`。
+### 环境要求
 
-## 快速开始
+* **CesiumJS**：`^1.130.0` (Peer Dependency，需宿主配置好 Cesium 静态资源加载，如使用 `vite-plugin-cesium`)；
+* **构建支持**：提供 ESM 与 CJS 双格式出口，内置 TypeScript 完整类型支持；
+* **浏览器兼容**：Chrome / Edge / Safari / Firefox 近两个主版本。
+
+---
+
+## 🚀 快速上手
 
 ```ts
 import { Viewer } from 'cesium';
@@ -35,14 +61,15 @@ import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { CesiumAnnotationEditor } from 'cesium-annotation-editor';
 import 'cesium-annotation-editor/styles.css';
 
+// 1. 初始化 Cesium 场景（强烈建议开启 requestRenderMode 以获得最佳能耗表现）
 const viewer = new Viewer('cesiumContainer', {
   animation: false,
   timeline: false,
-  // 建议开启按需渲染，空闲时不重绘；编辑器在几何/预览变更时会主动 requestRender。
   requestRenderMode: true,
   maximumRenderTimeChange: Infinity
 });
 
+// 2. 挂载编辑器实例
 const editor = new CesiumAnnotationEditor(viewer, {
   toolbar: true,
   snapping: {
@@ -51,344 +78,174 @@ const editor = new CesiumAnnotationEditor(viewer, {
   }
 });
 
+// 3. 监听标注创建与全量变更
 editor.on('create', ({ annotation }) => {
-  console.log('created', annotation.type, annotation.id);
+  console.log('创建标注:', annotation.id, annotation.type);
 });
 
 editor.on('change', () => {
-  console.log(editor.toJSON());
+  console.log('当前标注数据:', editor.toJSON());
 });
 ```
 
-## 交互
+---
 
-- 点击 toolbar 上的点、线、圆、多边形按钮进入对应绘制模式。
-- 点：点击地图创建标注。
-- 线：依次点击添加顶点，点击最后一个顶点、双击、按 `Enter` 或点击 `Finish` 完成。
-- 多边形：依次点击添加顶点，点击首个顶点、双击、按 `Enter` 或点击 `Finish` 完成。
-- 圆：第一次点击放置圆心，第二次点击确定半径。
-- 绘制线/面时按 `Backspace` 或点击 `Remove Last Vertex` 撤销最后一个顶点。
-- 按 `Escape` 或点击 `Cancel` 取消当前绘制。
-- 编辑模式下拖动 handle 修改几何。
-- 拖拽模式下拖动 annotation 整体移动。
+## 💡 交互操作指南
 
-## 原生 API
+| 几何类型 / 模式 | 交互动作 | 完成或确认方式 | 撤销与取消 |
+| :--- | :--- | :--- | :--- |
+| **点 (Point)** | 单击地图任意位置创建 | 单击即完成 | `Esc` 退出模式 |
+| **折线 (Polyline)** | 连续单击添加折线顶点（至少 2 点） | 双击 / 单击末点 / `Enter` / 点击 `Finish` | `Backspace` 撤销上一点；`Esc` 取消 |
+| **多边形 (Polygon)** | 连续单击添加轮廓顶点（至少 3 点） | 双击 / 单击首点闭合 / `Enter` / 点击 `Finish` | `Backspace` 撤销上一点；`Esc` 取消 |
+| **圆形 (Circle)** | 首次点击确定圆心，移动光标预览半径 | 再次点击确定半径并完成 | `Esc` 取消绘制 |
+| **编辑模式 (Edit)** | 点击选中要素，拖动高亮控制点调节形状 | 切换至其他工具或退出模式 | 自动同步至实体模型 |
+| **拖动模式 (Drag)** | 按下鼠标拖拽任意标注整体平移 | 松开鼠标完成放置 | 保持相对几何拓扑 |
+
+> [!TIP]
+> 绘制或编辑过程中，按住键盘 **`Alt`** 键可临时关闭几何吸附，方便在密集线段旁微调或标绘自由点。
+
+---
+
+## 🔌 核心 API 与架构
+
+### 1. 原生编程式 API
 
 ```ts
+import { Cartesian3 } from 'cesium';
+
+// 切换工作模式
 editor.setMode('draw:polygon');
 editor.enableDraw('polygon');
 editor.finishDrawing();
 editor.cancelDrawing();
-editor.removeLastVertex();
 
-editor.enableEditMode();
-editor.select(annotationId);
-editor.disableEditMode();
-
-editor.enableDragMode();
-editor.disableDragMode();
-
+// 编程式添加标注
 const annotation = editor.addAnnotation({
   type: 'point',
   position: Cartesian3.fromDegrees(117.2272, 31.8206)
 });
 
+// 更新与移除
 editor.updateAnnotation(annotation.id, {
-  properties: { name: 'inspection point' }
+  properties: { name: '检修井点 #1' }
 });
-
 editor.removeAnnotation(annotation.id);
-editor.getAnnotation(annotation.id);
-editor.getAnnotations();
-editor.clearAnnotations();
 
-const data = editor.toJSON();
-editor.fromJSON(data, { clear: true });
+// 模式管理
+editor.enableEditMode();
+editor.select(annotation.id);
+editor.enableDragMode();
 
-const unsubscribe = editor.on('update', ({ annotation, reason }) => {
-  console.log(annotation.id, reason);
-});
-unsubscribe();
-
+// 销毁实例（默认保留正式实体，仅清理工作层与事件）
 editor.destroy();
 ```
 
-完整类型、方法、参数和 payload 见 [API Reference](./docs/cesium-annotation-editor/05-plugin-api-contract.md)。
+### 2. Geoman-style 兼容 API
 
-## Options
+插件自动挂载 Geoman API 到 `editor.pm`（当 `viewer.pm` 未被占用时也会同步挂载）：
 
 ```ts
-const editor = new CesiumAnnotationEditor(viewer, {
-  toolbar: {
-    position: 'top-left',
-    buttons: ['drawPoint', 'drawPolyline', 'drawPolygon', 'drawCircle', 'editMode', 'dragMode'],
-    labels: {
-      drawPolygon: 'Draw Area'
-    }
-  },
-  shapes: ['point', 'polyline', 'circle', 'polygon'],
-  clampToGround: true,
-  continueDrawing: {
-    point: true,
-    polygon: false
-  },
-  circle: {
-    minRadius: 1,
-    maxRadius: 500000
-  },
-  snapping: {
-    enabled: true,
-    snapDistance: 20,
-    snapVertex: true,
-    snapSegment: true,
-    disableWithAlt: true
-  },
-  styles: {
-    pointColor: '#2f80ed',
-    lineColor: '#2f80ed',
-    fillColor: 'rgba(47, 128, 237, 0.26)'
-  },
-  destroyBehavior: 'keep-annotations'
+// 全局绘制与模式切换
+editor.pm.enableDraw('Polygon');
+editor.pm.enableGlobalEditMode();
+editor.pm.disableGlobalEditMode();
+
+// 图层级独立控制
+const layers = editor.pm.getGeomanLayers();
+const [targetLayer] = layers;
+
+targetLayer.pm.enable(); // 开启单要素编辑
+targetLayer.pm.enableLayerDrag(); // 开启单要素拖动
+targetLayer.pm.on('pm:update', ({ annotation }) => {
+  console.log('要素已更新:', annotation.id);
 });
 ```
 
-主要默认值：
-
-| Option | Default |
-| --- | --- |
-| `toolbar` | `true` |
-| `shapes` | `['point', 'polyline', 'circle', 'polygon']` |
-| `clampToGround` | `true` |
-| `heightMode` | `'terrain'` |
-| `continueDrawing` | `{ point: true }` |
-| `circle.minRadius` | `1` |
-| `edit.singleSelection` | `true` |
-| `drag.strategy` | `'cartographic-delta'` |
-| `snapping.snapDistance` | `20` |
-| `destroyBehavior` | `'keep-annotations'` |
-
-`heightMode`、`edit.allowVertexInsert`、`edit.allowVertexDelete`、`drag.strategy: 'enu'` 和 `circle.resizeable` 已保留在类型中，但当前实现仍以贴地 Entity、移动已有顶点、圆心/半径控制点和 cartographic delta 拖拽为主。
-
-## Annotation Model
+### 3. 核心生命周期与交互事件
 
 ```ts
-type AnnotationType = 'point' | 'polyline' | 'circle' | 'polygon';
-
-type Annotation =
-  | { id: string; type: 'point'; position: Cartesian3; entity: Cesium.Entity; source: 'draw' | 'api' }
-  | { id: string; type: 'polyline'; positions: Cartesian3[]; entity: Cesium.Entity; source: 'draw' | 'api' }
-  | { id: string; type: 'polygon'; positions: Cartesian3[]; entity: Cesium.Entity; source: 'draw' | 'api' }
-  | { id: string; type: 'circle'; center: Cartesian3; radius: number; entity: Cesium.Entity; source: 'draw' | 'api' };
+editor.on('create', ({ annotation, source }) => {});     // 用户交互标绘完成
+editor.on('update', ({ annotation, reason }) => {});     // 标注属性或几何更新
+editor.on('change', ({ annotation, source }) => {});     // 标注集合任何变化
+editor.on('select', ({ annotation, previous }) => {});   // 选中的标注发生变化
+editor.on('vertexdragend', ({ annotation }) => {});      // 控制点拖拽结束
+editor.on('dragend', ({ annotation }) => {});            // 要素整件拖拽结束
+editor.on('pm:snap', ({ snapPosition, snapTargetType }) => {}); // 触发吸附
 ```
 
-每个 annotation 还包含 `style`、`properties`、`createdAt`、`updatedAt`。`entity` 是 Cesium 渲染对象，业务持久化建议使用 `toJSON()` 的结果。
+---
 
-## 序列化
+## 💾 数据序列化
 
-`toJSON()` 输出经纬度数组，便于业务保存和回放：
+### 原生 JSON 双向流转
+
+导出/导入经纬度扁平数组格式（`[longitude, latitude, height]`），便于持久化至关系型数据库：
 
 ```ts
+// 导出全量标注
 const json = editor.toJSON();
 
-editor.fromJSON(
-  [
-    {
-      id: 'a1',
-      type: 'polygon',
-      positions: [
-        [117.22, 31.82, 0],
-        [117.23, 31.82, 0],
-        [117.23, 31.83, 0]
-      ],
-      style: { fillColor: '#3388ff33', outlineColor: '#3388ff' },
-      properties: { name: 'Area A' }
-    }
-  ],
-  { clear: true }
-);
+// 清空当前图层并批量恢复
+editor.fromJSON(json, { clear: true });
 ```
 
-JSON 会保留 `style` 和 `properties`，导出和导入都会深拷贝这两个对象，避免业务侧和 editor 内部共享可变引用。圆会保留为 `{ center, radius }`，不会自动近似成 polygon。
+### 标准 GeoJSON 双向流转
 
-GeoJSON 导入导出使用标准 `FeatureCollection`：
+导出标准 `FeatureCollection`，天然适配 QGIS、PostGIS、Mapbox 等外部 GIS 体系：
 
 ```ts
 const geojson = editor.toGeoJSON();
 editor.fromGeoJSON(geojson, { clear: true });
 ```
 
-映射规则：
+* **要素映射规则**：
+  * `point` ➔ `Feature<Point>`
+  * `polyline` ➔ `Feature<LineString>`
+  * `polygon` ➔ `Feature<Polygon>`（导出自动外环闭合，导入时自动解闭合）
+  * `circle` ➔ `Feature<Point>`（圆半径与插件元数据封装在 `properties.cesiumAnnotationEditor` 中）
 
-- `point` -> `Feature<Point>`。
-- `polyline` -> `Feature<LineString>`。
-- `polygon` -> `Feature<Polygon>`，导出外环自动闭合，导入后内部 `positions` 不保留重复闭合点。
-- `circle` -> `Feature<Point>`，并在 `properties.cesiumAnnotationEditor` 中保留 `type: 'circle'` 和 `radius`，导入时恢复为 circle。
+---
 
-GeoJSON 中插件元数据放在 `feature.properties.cesiumAnnotationEditor` 下，包含 annotation `type`、可选 `style`、circle `radius` 和原始业务 `properties`，避免与用户自定义字段混用。
-
-## 事件
-
-```ts
-editor.on('modechange', ({ previousMode, mode }) => {});
-editor.on('create', ({ annotation, source }) => {});
-editor.on('add', ({ annotation, source }) => {});
-editor.on('select', ({ annotation, previous }) => {});
-editor.on('update', ({ annotation, reason }) => {});
-editor.on('change', ({ annotation, source }) => {});
-editor.on('vertexdragstart', ({ annotation, vertexIndex, handleType, position }) => {});
-editor.on('vertexdrag', ({ annotation, vertexIndex, handleType, position }) => {});
-editor.on('vertexdragend', ({ annotation, vertexIndex, handleType, position }) => {});
-editor.on('dragstart', ({ annotation, startPosition, currentPosition }) => {});
-editor.on('drag', ({ annotation, startPosition, currentPosition }) => {});
-editor.on('dragend', ({ annotation, startPosition, currentPosition }) => {});
-editor.on('cancel', ({ mode, reason }) => {});
-editor.on('error', ({ code, message, cause }) => {});
-```
-
-核心事件：
-
-| Event | Timing |
-| --- | --- |
-| `buttonclick` | toolbar 主按钮或 action 按钮点击 |
-| `modechange` | 模式切换完成 |
-| `drawstart` / `drawend` | 绘制模式启动/结束 |
-| `create` | 用户交互绘制出 annotation |
-| `add` | API 加载 annotation |
-| `select` | 选中 annotation 变化 |
-| `update` | API、编辑或拖拽修改 annotation |
-| `change` | annotation 集合或几何发生变化 |
-| `vertexdragstart` / `vertexdrag` / `vertexdragend` | 编辑 handle 拖动 |
-| `dragstart` / `drag` / `dragend` | annotation 整体拖拽 |
-| `cancel` | 绘制被取消或模式清理 |
-| `error` | 不可恢复或明确上报的运行时错误 |
-
-## Geoman-style API
-
-插件同时提供 Leaflet-Geoman 风格 API：
+## 🔧 配置项
 
 ```ts
-import type { GeomanViewer } from 'cesium-annotation-editor';
-
-const geomanViewer = viewer as GeomanViewer;
-
-editor.pm.enableDraw('Polygon');
-geomanViewer.pm.enableDraw('Marker');
-
-editor.pm.Draw.Polygon.setOptions({ continueDrawing: true });
-editor.pm.Draw.Polygon.setStyle({ fillColor: 'rgba(47, 128, 237, 0.35)' });
-
-editor.pm.enableGlobalEditMode();
-editor.pm.disableGlobalEditMode();
-editor.pm.enableGlobalDragMode();
-editor.pm.disableGlobalDragMode();
-
-const layers = editor.pm.getGeomanLayers();
-const [layer] = layers;
-
-layer.pm.enable();
-layer.pm.on('pm:update', ({ annotation }) => {
-  console.log(annotation.id);
-});
-layer.pm.enableLayerDrag();
-layer.pm.remove();
-```
-
-`editor.pm` 总是可用。构造插件时，如果传入的 Cesium `viewer` 没有被其他集成占用 `pm` 属性，插件也会挂载同一个 API 到 `viewer.pm`，并在 `destroy()` 时恢复原始属性。
-
-支持的 shape 映射：
-
-| Geoman shape | Native type |
-| --- | --- |
-| `Marker` / `marker` | `point` |
-| `Line` / `line` | `polyline` |
-| `Circle` / `circle` | `circle` |
-| `Polygon` / `polygon` | `polygon` |
-
-Geoman 风格事件包括 `pm:create`、`pm:update`、`pm:edit`、`pm:dragstart`、`pm:drag`、`pm:dragend`、`pm:snapdrag`、`pm:snap`、`pm:unsnap`、`pm:vertexadded`、`pm:centerplaced`、`pm:globaldrawmodetoggled`、`pm:globaleditmodetoggled`、`pm:globaldragmodetoggled` 等。完整列表见 [API Reference](./docs/cesium-annotation-editor/05-plugin-api-contract.md#events)。
-
-## Snapping
-
-Snapping 默认开启，绘制和编辑时会吸附到已有 annotation 的顶点或线段；circle 会提供圆心和采样圆周边界作为候选。命中吸附时，当前 cursor marker、polygon hint line 终点或正在拖拽的 handle 会直接移动到吸附位置。
-
-```ts
-editor.on('pm:snap', ({ snapPosition, layerInteractedWith, snapTargetType }) => {
-  console.log(snapTargetType, snapPosition, layerInteractedWith);
-});
-
-editor.on('pm:unsnap', ({ snapPosition }) => {
-  console.log('leave snap target', snapPosition);
+const editor = new CesiumAnnotationEditor(viewer, {
+  toolbar: true,                      // 是否展示默认工具栏，也可传入 ToolbarOptions 自定义位置与按钮
+  shapes: ['point', 'polyline', 'circle', 'polygon'], // 启用的几何类型
+  clampToGround: true,                // 是否贴地渲染（Entity clampToGround）
+  snapping: {
+    enabled: true,                    // 开启吸附
+    snapDistance: 20,                 // 吸附触发像素距离阈值
+    snapVertex: true,                 // 吸附顶点
+    snapSegment: true,                // 吸附线段骨架
+    disableWithAlt: true              // 允许 Alt 临时禁用
+  },
+  destroyBehavior: 'keep-annotations' // 销毁策略：'keep-annotations' 保留实体 / 'remove-all' 完全清空
 });
 ```
 
-通过 `properties.snapIgnore = true` 添加的 annotation 不参与吸附候选。编辑某个 annotation 时会排除自身；绘制 polygon 时只有首点可作为 self-snap 候选用于闭合，且至少已有 3 个顶点才会触发完成。按住 `Alt` 会临时禁用 snapping。
+---
 
-## Toolbar
+## ⚡ 性能优化与实践
 
-```ts
-new CesiumAnnotationEditor(viewer, {
-  toolbar: {
-    container: document.querySelector('#toolbar') as HTMLElement,
-    position: 'top-right',
-    buttons: ['drawPoint', 'drawPolyline', 'drawPolygon', 'editMode', 'dragMode'],
-    labels: {
-      drawPoint: 'Draw Marker',
-      cancel: 'Cancel'
-    }
-  }
-});
-```
+面向中等规模标注场景（数百 ~ 2000 个标注），插件内置以下关键优化：
 
-可用按钮：`drawPoint`、`drawPolyline`、`drawCircle`、`drawPolygon`、`editMode`、`dragMode`、`finish`、`cancel`、`removeLastVertex`。
+1. **按需渲染适配 (Request Render)**：编辑器的绘制预览、控制点更新、拖动均主动派发 `viewer.scene.requestRender()`。强烈建议为宿主 `Viewer` 开启 `requestRenderMode: true`，在无交互静止时将 GPU/CPU 开销降至最低。
+2. **视口 Handle 增量裁剪**：在全局编辑模式下，编辑器仅为当前相机视锥体内可见的标注创建顶点交互 Handle，相机停止移动时触发增量重建，避免视口外不可见标注过度创建 Cesium 实体。
+3. **吸附候选版本缓存**：吸附候选坐标池基于标注版本号及视口进行惰性缓存，鼠标移动过程免除重复全量投影运算。
 
-## 性能
+---
 
-面向几百 ~ 2000 个标注的编辑场景，做了以下优化：
+## 📖 相关文档
 
-- **按需渲染**：编辑器在绘制 / 编辑 / 拖拽预览等几何变更时会主动调用 `viewer.scene.requestRender()`，因此强烈建议宿主 `Viewer` 开启 `requestRenderMode: true`，空闲时不重绘以降低 GPU/CPU 占用。
-- **handle 视口裁剪**：全局编辑模式保持 Geoman 语义（所有图形同时可编辑），但只为当前视口内的标注创建顶点 handle，相机停止移动时增量重建。handle 数量随屏幕可见量而非标注总量增长。
-- **吸附候选缓存**：吸附候选与屏幕投影按标注版本号、相机和视口缓存，避免每次鼠标移动重复计算。
+* [完整 API 契约与方法参数](./docs/cesium-annotation-editor/05-plugin-api-contract.md)
+* [交互状态机与操作规格](./docs/cesium-annotation-editor/02-interaction-spec.md)
+* [Cesium 技术架构设计](./docs/cesium-annotation-editor/04-cesium-technical-design.md)
+* [大数据量性能优化设计](./docs/cesium-annotation-editor/07-large-scale-performance-design.md)
+* [系统验收测试用例](./docs/cesium-annotation-editor/06-acceptance-tests.md)
 
-更完整的设计见 [大数据量性能设计](./docs/cesium-annotation-editor/07-large-scale-performance-design.md)。
+---
 
-## 生命周期
-
-```ts
-editor.destroy();
-editor.isDestroyed();
-```
-
-`destroy()` 可重复调用。默认 `destroyBehavior: 'keep-annotations'` 会保留正式 annotation entity，只清理工作图层、helper、toolbar、事件监听和 `viewer.pm` 挂载。设置为 `'remove-all'` 时会同时删除所有 annotation。
-
-## Demo
-
-```bash
-npm install
-npm run demo
-```
-
-然后打开 Vite 输出的 URL，入口位于 `examples/basic`。
-
-## 文档
-
-- [API Reference](./docs/cesium-annotation-editor/05-plugin-api-contract.md)
-- [交互规格](./docs/cesium-annotation-editor/02-interaction-spec.md)
-- [Cesium 技术设计](./docs/cesium-annotation-editor/04-cesium-technical-design.md)
-- [验收用例](./docs/cesium-annotation-editor/06-acceptance-tests.md)
-- [大数据量性能设计](./docs/cesium-annotation-editor/07-large-scale-performance-design.md)
-
-## 兼容性
-
-- CesiumJS: `^1.130.0`
-- Module: ESM first，同时提供 CJS 入口
-- Language: TypeScript
-- Browser: Chrome / Edge / Safari 近两个主版本
-
-## 仓库
-
-- npm: <https://www.npmjs.com/package/cesium-annotation-editor>
-- GitHub: <https://github.com/nanvon/cesium-annotation-editor>
-- Issues: <https://github.com/nanvon/cesium-annotation-editor/issues>
-
-## License
+## 📄 开源许可
 
 [MIT](./LICENSE) © nanvon
